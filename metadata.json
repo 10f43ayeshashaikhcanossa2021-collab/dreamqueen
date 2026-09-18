@@ -1,0 +1,6 @@
+{
+  "name": "DreamQueen",
+  "description": "Premium handmade crochet accessories made with love, featuring verified buyer feedback on purchased items, artisan replies, order tracking, and bespoke custom orders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

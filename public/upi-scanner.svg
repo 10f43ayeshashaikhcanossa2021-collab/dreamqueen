@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 620" width="400" height="620" style="background: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <filter id="card-shadow" x="-10%" y="-5%" width="120%" height="115%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Clean Card Background -->
+  <rect x="0" y="0" width="400" height="620" fill="#ffffff" rx="0" />
+
+  <!-- India Post Payments Bank Header -->
+  <g transform="translate(55, 30)">
+    <!-- Red Post Circle Logo -->
+    <ellipse cx="38" cy="35" rx="22" ry="26" fill="#B72832" />
+    <!-- Yellow strokes -->
+    <path d="M 0 52 C 25 45, 45 20, 68 8" stroke="#EFB22D" stroke-width="4" fill="none" stroke-linecap="round" />
+    <path d="M 6 56 C 28 50, 48 26, 72 15" stroke="#EFB22D" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 14 60 C 33 55, 52 33, 76 22" stroke="#EFB22D" stroke-width="2.5" fill="none" stroke-linecap="round" />
+
+    <!-- Text in Hindi & English -->
+    <g transform="translate(74, 18)">
+      <text x="0" y="16" font-size="14" font-weight="bold" fill="#8B2332">इंडिया पोस्ट</text>
+      <text x="0" y="33" font-size="14" font-weight="bold" fill="#8B2332">पेमेंट्स बैंक</text>
+      
+      <!-- Divider -->
+      <line x1="78" y1="3" x2="78" y2="38" stroke="#A07078" stroke-width="1.2" />
+
+      <text x="88" y="17" font-size="13" font-weight="600" fill="#6E2430">India Post</text>
+      <text x="88" y="33" font-size="13" font-weight="600" fill="#6E2430">Payments Bank</text>
+    </g>
+  </g>
+
+  <!-- Subtitle -->
+  <text x="200" y="148" text-anchor="middle" font-size="17" font-weight="500" fill="#424242" letter-spacing="0.3">Scan this QR Code</text>
+
+  <!-- QR Code Frame -->
+  <image href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNSAzNSIgc2hhcGUtcmVuZGVyaW5nPSJjcmlzcEVkZ2VzIj48cGF0aCBmaWxsPSIjZmZmZmZmIiBkPSJNMCAwaDM1djM1SDB6Ii8+PHBhdGggc3Ryb2tlPSIjMDAwMDAwIiBkPSJNMSAxLjVoN20xIDBoMm0zIDBoMW0xIDBoMW0yIDBoM20xIDBoMW0xIDBoMW0xIDBoN00xIDIuNWgxbTUgMGgxbTIgMGgybTEgMGg0bTEgMGg1bTQgMGgxbTUgMGgxTTEgMy41aDFtMSAwaDNtMSAwaDFtMiAwaDFtOCAwaDFtMSAwaDVtMSAwaDFtMSAwaDNtMSAwaDFNMSA0LjVoMW0xIDBoM20xIDBoMW0xIDBoMW0zIDBoMW0yIDBoM20zIDBoMm0zIDBoMW0xIDBoM20xIDBoMU0xIDUuNWgxbTEgMGgzbTEgMGgxbTEgMGgybTIgMGgzbTQgMGgybTEgMGgzbTEgMGgxbTEgMGgzbTEgMGgxTTEgNi41aDFtNSAwaDFtMSAwaDFtMiAwaDFtMiAwaDFtMSAwaDJtMSAwaDJtMiAwaDFtMiAwaDFtNSAwaDFNMSA3LjVoN20xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoN005IDguNWgzbTEgMGgxbTIgMGg1bTEgMGgybTEgMGgxTTEgOS41aDFtMyAwaDFtMSAwaDRtMSAwaDFtMyAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDVtMiAwaDFNMSAxMC41aDFtMyAwaDFtMiAwaDVtMiAwaDNtMSAwaDJtMSAwaDFtMSAwaDNtMSAwaDFtMiAwaDFtMSAwaDFNMyAxMS41aDJtMiAwaDFtMSAwaDFtMyAwaDNtMSAwaDFtMiAwaDFtMSAwaDRtMiAwaDNtMSAwaDJNMyAxMi41aDJtMSAwaDFtMyAwaDJtMiAwaDFtMyAwaDJtMyAwaDJtMSAwaDFtMSAwaDJtMiAwaDJNMSAxMy41aDFtMSAwaDFtMSAwaDFtMSAwaDFtMiAwaDFtMSAwaDFtMSAwaDFtMyAwaDRtMyAwaDFtNiAwaDJNMSAxNC41aDFtMiAwaDJtNiAwaDJtMSAwaDJtNCAwaDJtNSAwaDJtMSAwaDFNMyAxNS41aDFtMSAwaDRtNCAwaDJtMSAwaDFtMiAwaDJtMiAwaDNtMiAwaDVNMiAxNi41aDRtNCAwaDJtMSAwaDJtNiAwaDJtMyAwaDFtMiAwaDJtMSAwaDFNMyAxNy41aDVtMiAwaDJtMyAwaDFtMSAwaDJtMiAwaDJtMSAwaDJtMSAwaDNtMSAwaDFtMSAwaDFNNCAxOC41aDFtMyAwaDNtMiAwaDJtNSAwaDFtMyAwaDFtMyAwaDFtMyAwaDFNMiAxOS41aDNtMSAwaDVtNSAwaDNtMyAwaDFtMSAwaDFtMSAwaDFtNSAwaDJNMSAyMC41aDFtMSAwaDFtNCAwaDJtMSAwaDJtMSAwaDJtMyAwaDNtMiAwaDFtMSAwaDFtMyAwaDFtMiAwaDFNMSAyMS41aDJtMSAwaDFtMiAwaDJtMSAwaDFtMSAwaDJtMSAwaDFtMiAwaDNtMSAwaDFtMiAwaDJtMiAwaDJtMiAwaDFNMSAyMi41aDFtMSAwaDJtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtMyAwaDNtMSAwaDRtMiAwaDFNMyAyMy41aDFtMiAwaDJtMyAwaDJtMSAwaDFtMiAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtMSAwaDFtMSAwaDJtMSAwaDFNNCAyNC41aDFtMSAwaDFtMSAwaDJtMSAwaDFtMSAwaDJtMSAwaDFtMSAwaDJtMSAwaDFtMiAwaDNtMiAwaDJtMSAwaDFNMSAyNS41aDJtMSAwaDJtMSAwaDJtMSAwaDNtMiAwaDFtMiAwaDNtMiAwaDFtMSAwaDdNOSAyNi41aDFtNCAwaDFtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDJtMyAwaDFtMiAwaDJNMSAyNy41aDdtMSAwaDJtMiAwaDFtMSAwaDNtMiAwaDFtMSAwaDJtMSAwaDFtMSAwaDFtMSAwaDNNMSAyOC41aDFtNSAwaDFtMiAwaDFtNCAwaDFtOSAwaDFtMyAwaDJtMSAwaDJNMSAyOS41aDFtMSAwaDNtMSAwaDFtMSAwaDFtNSAwaDFtMyAwaDFtMiAwaDJtMSAwaDVtMyAwaDFNMSAzMC41aDFtMSAwaDNtMSAwaDFtNiAwaDNtNiAwaDJtMSAwaDJtMSAwaDJtMSAwaDJNMSAzMS41aDFtMSAwaDNtMSAwaDFtMyAwaDFtMSAwaDJtMiAwaDFtMSAwaDFtMiAwaDJtMSAwaDdNMSAzMi41aDFtNSAwaDFtMiAwaDJtMSAwaDNtMiAwaDNtMiAwaDFNMSAzMy41aDdtMSAwaDFtMSAwaDFtNCAwaDFtNCAwaDJtMiAwaDVtMSAwaDFtMSAwaDEiLz48L3N2Zz4K" x="70" y="175" width="260" height="260" />
+
+  <!-- Payee Details -->
+  <g transform="translate(200, 475)" text-anchor="middle">
+    <text x="0" y="0" font-size="16" font-weight="700" fill="#332729" letter-spacing="0.6">AYESHA LUKMAN SHAIKH</text>
+    <text x="0" y="24" font-size="15" font-weight="500" fill="#403034">8097706536@postbank</text>
+  </g>
+
+  <!-- Powered by UPI -->
+  <g transform="translate(200, 560)" text-anchor="middle">
+    <text x="0" y="0" font-size="9" font-weight="700" fill="#8C8587" letter-spacing="1.5">POWERED BY</text>
+    <g transform="translate(-30, 8)">
+      <text x="25" y="15" font-size="17" font-weight="900" font-style="italic" fill="#333333" letter-spacing="0.5">UPI</text>
+      <path d="M 48 3 L 57 11 L 48 19 Z" fill="#E57200" />
+      <path d="M 53 3 L 62 11 L 53 19 Z" fill="#008752" />
+    </g>
+  </g>
+</svg>

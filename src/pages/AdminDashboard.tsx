@@ -642,6 +642,35 @@ export const AdminDashboard: React.FC = () => {
                       Customer: <strong>{ord.customer.name}</strong> • Phone: {ord.customer.phone} • City:{' '}
                       {ord.shippingAddress.city}
                     </p>
+                    <div className="mt-2 rounded-lg bg-[#F8F5F1] p-3">
+                      <p className="text-xs font-semibold text-[#4A4541]">
+                         📍 Delivery Address
+                         </p>
+
+                       <p className="mt-1 text-sm text-[#6E6863]">
+                          {ord.shippingAddress?.addressLine1}
+                          {ord.shippingAddress?.addressLine2 && (
+                              <>
+                           , {ord.shippingAddress.addressLine2}
+                             </>
+                             )}
+                             {ord.shippingAddress?.city && (
+      <>
+        , {ord.shippingAddress.city}
+      </>
+    )}
+    {ord.shippingAddress?.state && (
+      <>
+        , {ord.shippingAddress.state}
+      </>
+    )}
+    {ord.shippingAddress?.pincode && (
+      <>
+        - {ord.shippingAddress.pincode}
+      </>
+    )}
+  </p>
+</div>
                   </div>
 
                   {/* Status Dropdown */}

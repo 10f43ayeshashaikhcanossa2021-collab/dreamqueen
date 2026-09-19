@@ -256,39 +256,105 @@ export async function updateCurrentProfile(name: string, phone: string): Promise
   if (authError) throw authError;
 }
 
-export async function syncOrderToSupabase(order: Order): Promise<{ success: boolean; error?: string }> {
+export async function syncOrderToSupabase(
+  order: Order
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.from('orders').upsert({
+    // Get the currently logged-in Supabase user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      console.error('[Supabase] Could not get authenticated user:', userError);
+    }
+
+    const orderRow = {
       id: order.id,
+      user_id: user?.id ?? null,
+
       order_number: order.orderNumber,
-      customer: order.customer,
-      shipping_address: order.shippingAddress,
-      items: order.items,
-      subtotal: order.subtotal,
-      discount: order.discount,
-      coupon_code: order.couponCode,
-      shipping_fee: order.shippingFee,
-      cod_fee: order.codFee,
-      total: order.total,
-      payment_method: order.paymentMethod,
-      payment_status: order.paymentStatus,
-      razorpay_payment_id: order.razorpayPaymentId,
-      razorpay_order_id: order.razorpayOrderId,
-      tracking_status: order.trackingStatus,
-      shiprocket_tracking_number: order.shiprocketTrackingNumber,
-      estimated_delivery_date: order.estimatedDeliveryDate,
-      notes: order.notes,
-      created_at: order.createdAt
-    });
+
+      customer: order.customer ?? {
+        name: '',
+        email: '',
+        phone: '',
+      },
+
+      shipping_address: order.shippingAddress ?? {
+        fullName: '',
+        phone: '',
+        email: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+      },
+
+      items: order.items ?? [],
+
+      subtotal: Number(order.subtotal ?? 0),
+      discount: Number(order.discount ?? 0),
+      coupon_code: order.couponCode ?? null,
+      shipping_fee: Number(order.shippingFee ?? 0),
+      cod_fee: Number(order.codFee ?? 0),
+      total: Number(order.total ?? 0),
+
+      payment_method: order.paymentMethod ?? 'cod',
+      payment_status: order.paymentStatus ?? 'pending',
+
+      razorpay_payment_id: order.razorpayPaymentId ?? null,
+      razorpay_order_id: order.razorpayOrderId ?? null,
+
+      tracking_status: order.trackingStatus ?? 'preparing',
+
+      shiprocket_tracking_number:
+        order.shiprocketTrackingNumber ?? null,
+
+      estimated_delivery_date:
+        order.estimatedDeliveryDate ?? null,
+
+      notes: order.notes ?? null,
+
+      created_at: order.createdAt || new Date().toISOString(),
+    };
+
+    console.log('[Supabase] Saving order:', orderRow);
+
+    const { data, error } = await supabase
+      .from('orders')
+      .upsert(orderRow, {
+        onConflict: 'id',
+      })
+      .select()
+      .single();
 
     if (error) {
-      console.warn('[Supabase] orders table sync notice:', error.message);
-      return { success: false, error: error.message };
+      console.error('[Supabase] ORDER SAVE FAILED:', error);
+      console.error('[Supabase] Error message:', error.message);
+      console.error('[Supabase] Error details:', error.details);
+      console.error('[Supabase] Error hint:', error.hint);
+      console.error('[Supabase] Error code:', error.code);
+
+      return {
+        success: false,
+        error: error.message,
+      };
     }
-    return { success: true };
+
+    console.log('[Supabase] ORDER SAVED SUCCESSFULLY:', data);
+
+    return {
+      success: true,
+    };
   } catch (err: any) {
-    console.warn('[Supabase] Sync order error:', err);
-    return { success: false, error: err?.message };
+    console.error('[Supabase] Unexpected order sync error:', err);
+
+    return {
+      success: false,
+      error: err?.message || 'Unknown Supabase order error',
+    };
   }
 }
 

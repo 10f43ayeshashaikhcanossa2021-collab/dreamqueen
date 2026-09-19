@@ -758,8 +758,8 @@ export const AdminDashboard: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={handleOpenNewProduct}
-              className="px-4 py-2 rounded-full bg-[#5B3A29] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#43291B]"
+                onClick={handleOpenNewProduct}
+                className="px-4 py-2 rounded-full bg-[#5B3A29] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#43291B]"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Product</span>

@@ -311,44 +311,59 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refreshFromSupabase = async () => {
     setIsSupabaseSyncing(true);
     try {
-      const [prodsRes, ordersRes, customRes, feedbacksRes] = await Promise.allSettled([
-        fetchProductsFromSupabase(),
-        fetchOrdersFromSupabase(),
-        fetchCustomOrdersFromSupabase(),
-        fetchFeedbacksFromSupabase()
-      ]);
-
-      if (prodsRes.status === 'fulfilled' && prodsRes.value.length > 0) {
-        setProducts(prodsRes.value);
-        try {
-          localStorage.setItem('dreamqueen_products_v4', JSON.stringify(prodsRes.value));
-        } catch {}
+      // 1. Sync catalog products from Supabase
+      try {
+        const liveProducts = await fetchProductsFromSupabase();
+        if (liveProducts && liveProducts.length > 0) {
+          setProducts(liveProducts);
+          try {
+            localStorage.setItem('dreamqueen_products_v4', JSON.stringify(liveProducts));
+            localStorage.setItem('dreamqueen_products', JSON.stringify(liveProducts));
+          } catch {}
+        }
+      } catch (pErr) {
+        console.warn('[Supabase] Products sync notice:', pErr);
       }
 
-      if (ordersRes.status === 'fulfilled' && ordersRes.value.length > 0) {
-        setOrders((prev) => {
-          const remoteOrders = ordersRes.value;
-          const remoteMap = new Map(remoteOrders.map((o) => [o.id, o]));
-          const remoteNumMap = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
-          const merged = [...remoteOrders];
-          for (const ord of prev) {
-            if (!remoteMap.has(ord.id) && !remoteNumMap.has(ord.orderNumber.toUpperCase())) {
-              merged.push(ord);
+      // 2. Sync orders from Supabase
+      try {
+        const remoteOrders = await fetchOrdersFromSupabase();
+        if (remoteOrders && remoteOrders.length > 0) {
+          setOrders((prev) => {
+            const remoteMap = new Map(remoteOrders.map((o) => [o.id, o]));
+            const remoteNumMap = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
+            const merged = [...remoteOrders];
+            for (const ord of prev) {
+              if (!remoteMap.has(ord.id) && !remoteNumMap.has(ord.orderNumber.toUpperCase())) {
+                merged.push(ord);
+              }
             }
-          }
-          return merged;
-        });
+            return merged;
+          });
+        }
+      } catch (oErr) {
+        console.warn('[Supabase] Orders sync notice:', oErr);
       }
 
-      if (customRes.status === 'fulfilled' && customRes.value.length > 0) {
-        setCustomOrders(customRes.value);
+      // 3. Sync custom orders from Supabase
+      try {
+        const liveCustom = await fetchCustomOrdersFromSupabase();
+        if (liveCustom && liveCustom.length > 0) {
+          setCustomOrders(liveCustom);
+        }
+      } catch (cErr) {
+        console.warn('[Supabase] Custom orders sync notice:', cErr);
       }
 
-      if (feedbacksRes.status === 'fulfilled' && feedbacksRes.value.length > 0) {
-        setFeedbacks(feedbacksRes.value);
+      // 4. Sync feedbacks from Supabase
+      try {
+        const liveFeedbacks = await fetchFeedbacksFromSupabase();
+        if (liveFeedbacks && liveFeedbacks.length > 0) {
+          setFeedbacks(liveFeedbacks);
+        }
+      } catch (fErr) {
+        console.warn('[Supabase] Feedbacks sync notice:', fErr);
       }
-    } catch (err) {
-      console.warn('[Supabase] Sync notice:', err);
     } finally {
       setIsSupabaseSyncing(false);
     }
@@ -382,9 +397,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       },
       onOrderChange: (event, payload) => {
         if (event === 'DELETE') {
-          if (payload.old?.id) {
-            const delId = String(payload.old.id);
-            setOrders((prev) => prev.filter((o) => o.id !== delId));
+          const delId = String(payload.old?.id || '');
+          const delNum = String(payload.old?.order_number || '');
+          if (delId || delNum) {
+            setOrders((prev) => prev.filter((o) => (delId ? o.id !== delId : true) && (delNum ? o.orderNumber !== delNum : true)));
           }
         } else if (payload.new) {
           const incoming = orderFromSupabaseRow(payload.new);

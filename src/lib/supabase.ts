@@ -119,13 +119,18 @@ export function productToSupabaseRow(product: Product) {
 }
 
 export async function fetchProductsFromSupabase(): Promise<Product[]> {
+  // Query without unindexed server-side sorting to avoid PostgreSQL 57014 statement timeout on large image arrays
   const { data, error } = await supabase
     .from('products')
-    .select('*')
-    .order('updated_at', { ascending: false });
+    .select('*');
 
   if (error) throw error;
-  return (data || []).map(productFromSupabaseRow);
+  const list = (data || []).map(productFromSupabaseRow);
+  return list.sort((a, b) => {
+    const timeA = (a as any).updated_at || (a as any).updatedAt || a.id;
+    const timeB = (b as any).updated_at || (b as any).updatedAt || b.id;
+    return String(timeB).localeCompare(String(timeA));
+  });
 }
 
 export async function upsertProductToSupabase(product: Product): Promise<void> {
@@ -221,12 +226,39 @@ export async function testSupabaseHealth(): Promise<SupabaseHealthStatus> {
  */
 
 export function orderFromSupabaseRow(row: any): Order {
+  let customer = row.customer;
+  if (typeof customer === 'string') {
+    try {
+      customer = JSON.parse(customer);
+    } catch {
+      customer = { name: '', email: '', phone: '' };
+    }
+  }
+
+  let shippingAddress = row.shipping_address;
+  if (typeof shippingAddress === 'string') {
+    try {
+      shippingAddress = JSON.parse(shippingAddress);
+    } catch {
+      shippingAddress = { fullName: '', phone: '', email: '', address: '', city: '', state: '', pincode: '' };
+    }
+  }
+
+  let items = row.items;
+  if (typeof items === 'string') {
+    try {
+      items = JSON.parse(items);
+    } catch {
+      items = [];
+    }
+  }
+
   return {
     id: String(row.id),
     orderNumber: row.order_number || '',
-    customer: row.customer || { name: '', email: '', phone: '' },
-    shippingAddress: row.shipping_address || { fullName: '', phone: '', email: '', address: '', city: '', state: '', pincode: '' },
-    items: Array.isArray(row.items) ? row.items : [],
+    customer: customer || { name: '', email: '', phone: '' },
+    shippingAddress: shippingAddress || { fullName: '', phone: '', email: '', address: '', city: '', state: '', pincode: '' },
+    items: Array.isArray(items) ? items : [],
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
     couponCode: row.coupon_code || undefined,
@@ -241,26 +273,27 @@ export function orderFromSupabaseRow(row: any): Order {
     shiprocketTrackingNumber: row.shiprocket_tracking_number || undefined,
     estimatedDeliveryDate: row.estimated_delivery_date || '',
     notes: row.notes || undefined,
-    createdAt: row.created_at
+    createdAt: row.created_at || new Date().toISOString()
   };
 }
 
 export async function fetchOrdersFromSupabase(): Promise<Order[]> {
   const { data, error } = await supabase
     .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select('*');
   if (error) throw error;
-  return (data || []).map(orderFromSupabaseRow);
+  const orders = (data || []).map(orderFromSupabaseRow);
+  return orders.sort((a, b) => {
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
 }
 
 export async function fetchCustomOrdersFromSupabase(): Promise<CustomOrderRequest[]> {
   const { data, error } = await supabase
     .from('custom_orders')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select('*');
   if (error) throw error;
-  return (data || []).map((row: any) => ({
+  const list = (data || []).map((row: any) => ({
     id: String(row.id),
     customerName: row.customer_name || '',
     email: row.email || '',
@@ -273,8 +306,11 @@ export async function fetchCustomOrdersFromSupabase(): Promise<CustomOrderReques
     referenceImageUrl: row.reference_image_url || undefined,
     message: row.message || '',
     status: row.status || 'submitted',
-    createdAt: row.created_at
+    createdAt: row.created_at || new Date().toISOString()
   }));
+  return list.sort((a, b) => {
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
 }
 
 export async function fetchCurrentProfile(): Promise<any | null> {
@@ -583,6 +619,12 @@ CREATE POLICY "Allow public read-write orders" ON public.orders FOR ALL USING (t
 CREATE POLICY "Allow public read-write custom_orders" ON public.custom_orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write feedbacks" ON public.feedbacks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable Supabase Realtime so all connected devices sync immediately
+ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.custom_orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.feedbacks;
 `;
 
 // =========================================================
@@ -731,12 +773,11 @@ export async function updateStoreSettingsInSupabase(
 export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedback[]> {
   const { data, error } = await supabase
     .from('feedbacks')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select('*');
 
   if (error) throw error;
 
-  return (data || []).map((row: any) => ({
+  const list = (data || []).map((row: any) => ({
     id: String(row.id),
 
     orderId: row.order_id || '',
@@ -763,17 +804,14 @@ export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedbac
       : [],
 
     photoUrl: row.photo_url || undefined,
-
-    recommend:
-      row.recommend === null
-        ? true
-        : Boolean(row.recommend),
-
-    artisanResponse:
-      row.artisan_response || undefined,
-
-    createdAt: row.created_at
+    recommend: row.recommend === null ? true : Boolean(row.recommend),
+    artisanResponse: row.artisan_response || undefined,
+    createdAt: row.created_at || new Date().toISOString()
   }));
+
+  return list.sort((a, b) => {
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
 }
 
 // =========================================================

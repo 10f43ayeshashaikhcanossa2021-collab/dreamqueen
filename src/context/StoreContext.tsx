@@ -284,7 +284,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const loadProducts = async () => {
       try {
         const cloudProducts = await fetchProductsFromSupabase();
-
+        console.log(
+  '[DreamQueen] Products loaded from Supabase:',
+  cloudProducts.length,
+  cloudProducts.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+  }))
+                      );
+    
         if (!mounted) return;
 
         if (cloudProducts.length > 0) {

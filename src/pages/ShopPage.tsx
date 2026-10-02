@@ -9,7 +9,7 @@ export const ShopPage: React.FC = () => {
 
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [maxPrice, setMaxPrice] = useState<number>(400);
+  const [maxPrice, setMaxPrice] = useState<number>(500);
   const [sortBy, setSortBy] = useState<'featured' | 'priceAsc' | 'priceDesc' | 'rating' | 'newest'>('featured');
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
@@ -160,12 +160,12 @@ export const ShopPage: React.FC = () => {
       {/* Active Filter summary */}
       <div className="flex items-center justify-between text-xs text-[#6E6863] mb-6">
         <span>Showing {filteredProducts.length} handmade items</span>
-        {(selectedCategory !== 'All' || searchQuery || maxPrice < 400 || onlyInStock) && (
+        {(selectedCategory !== 'All' || searchQuery || maxPrice < 500 || onlyInStock) && (
           <button
             onClick={() => {
               setSelectedCategory('All');
               setSearchQuery('');
-              setMaxPrice(400);
+              setMaxPrice(500);
               setOnlyInStock(false);
             }}
             className="text-[#842029] hover:underline font-medium"
@@ -195,7 +195,7 @@ export const ShopPage: React.FC = () => {
             onClick={() => {
               setSelectedCategory('All');
               setSearchQuery('');
-              setMaxPrice(400);
+              setMaxPrice(500);
             }}
             className="px-5 py-2 rounded-full bg-[#5B3A29] text-white text-xs font-semibold"
           >

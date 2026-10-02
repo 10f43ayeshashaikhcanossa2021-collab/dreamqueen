@@ -31,7 +31,12 @@ import {
   updateCustomOrderStatusInSupabase,
   signUpWithSupabase,
   signInWithSupabase,
-  signOutSupabase
+  signOutSupabase,
+  subscribeToRealtimeUpdates,
+  productFromSupabaseRow,
+  orderFromSupabaseRow,
+  customOrderFromSupabaseRow,
+  feedbackFromSupabaseRow
 } from '../lib/supabase';
 
 interface ToastInfo {
@@ -306,19 +311,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refreshFromSupabase = async () => {
     setIsSupabaseSyncing(true);
     try {
-      const [remoteProducts, remoteOrders, remoteCustom, remoteFeedbacks] = await Promise.all([
+      const [prodsRes, ordersRes, customRes, feedbacksRes] = await Promise.allSettled([
         fetchProductsFromSupabase(),
         fetchOrdersFromSupabase(),
         fetchCustomOrdersFromSupabase(),
         fetchFeedbacksFromSupabase()
       ]);
 
-      if (remoteProducts && remoteProducts.length > 0) {
-        setProducts(remoteProducts);
+      if (prodsRes.status === 'fulfilled' && prodsRes.value.length > 0) {
+        setProducts(prodsRes.value);
+        try {
+          localStorage.setItem('dreamqueen_products_v4', JSON.stringify(prodsRes.value));
+        } catch {}
       }
 
-      if (remoteOrders && remoteOrders.length > 0) {
+      if (ordersRes.status === 'fulfilled' && ordersRes.value.length > 0) {
         setOrders((prev) => {
+          const remoteOrders = ordersRes.value;
           const remoteMap = new Map(remoteOrders.map((o) => [o.id, o]));
           const remoteNumMap = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
           const merged = [...remoteOrders];
@@ -331,36 +340,131 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
 
-      if (remoteCustom && remoteCustom.length > 0) {
-        setCustomOrders((prev) => {
-          const map = new Map(remoteCustom.map((c) => [c.id, c]));
-          const merged = [...remoteCustom];
-          for (const item of prev) {
-            if (!map.has(item.id)) merged.push(item);
-          }
-          return merged;
-        });
+      if (customRes.status === 'fulfilled' && customRes.value.length > 0) {
+        setCustomOrders(customRes.value);
       }
 
-      if (remoteFeedbacks && remoteFeedbacks.length > 0) {
-        setFeedbacks((prev) => {
-          const map = new Map(remoteFeedbacks.map((f) => [f.id, f]));
-          const merged = [...remoteFeedbacks];
-          for (const fb of prev) {
-            if (!map.has(fb.id)) merged.push(fb);
-          }
-          return merged;
-        });
+      if (feedbacksRes.status === 'fulfilled' && feedbacksRes.value.length > 0) {
+        setFeedbacks(feedbacksRes.value);
       }
     } catch (err) {
-      console.warn('[Supabase] Initial sync notice:', err);
+      console.warn('[Supabase] Sync notice:', err);
     } finally {
       setIsSupabaseSyncing(false);
     }
   };
 
+  // Cross-device live Realtime & visibility sync
   useEffect(() => {
+    // 1. Initial cloud fetch
     refreshFromSupabase();
+
+    // 2. Realtime WebSocket subscription for instant cross-device updates
+    const unsubscribe = subscribeToRealtimeUpdates({
+      onProductChange: (event, payload) => {
+        if (event === 'DELETE') {
+          if (payload.old?.id) {
+            const delId = String(payload.old.id);
+            setProducts((prev) => prev.filter((p) => p.id !== delId));
+          }
+        } else if (payload.new) {
+          const incoming = productFromSupabaseRow(payload.new);
+          setProducts((prev) => {
+            const idx = prev.findIndex((p) => p.id === incoming.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = incoming;
+              return updated;
+            }
+            return [incoming, ...prev];
+          });
+        }
+      },
+      onOrderChange: (event, payload) => {
+        if (event === 'DELETE') {
+          if (payload.old?.id) {
+            const delId = String(payload.old.id);
+            setOrders((prev) => prev.filter((o) => o.id !== delId));
+          }
+        } else if (payload.new) {
+          const incoming = orderFromSupabaseRow(payload.new);
+          setOrders((prev) => {
+            const idx = prev.findIndex(
+              (o) => o.id === incoming.id || o.orderNumber === incoming.orderNumber
+            );
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = incoming;
+              return updated;
+            }
+            return [incoming, ...prev];
+          });
+        }
+      },
+      onCustomOrderChange: (event, payload) => {
+        if (event === 'DELETE') {
+          if (payload.old?.id) {
+            const delId = String(payload.old.id);
+            setCustomOrders((prev) => prev.filter((c) => c.id !== delId));
+          }
+        } else if (payload.new) {
+          const incoming = customOrderFromSupabaseRow(payload.new);
+          setCustomOrders((prev) => {
+            const idx = prev.findIndex((c) => c.id === incoming.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = incoming;
+              return updated;
+            }
+            return [incoming, ...prev];
+          });
+        }
+      },
+      onFeedbackChange: (event, payload) => {
+        if (event === 'DELETE') {
+          if (payload.old?.id) {
+            const delId = String(payload.old.id);
+            setFeedbacks((prev) => prev.filter((f) => f.id !== delId));
+          }
+        } else if (payload.new) {
+          const incoming = feedbackFromSupabaseRow(payload.new);
+          setFeedbacks((prev) => {
+            const idx = prev.findIndex((f) => f.id === incoming.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = incoming;
+              return updated;
+            }
+            return [incoming, ...prev];
+          });
+        }
+      }
+    });
+
+    // 3. Fallback polling every 10 seconds to keep all devices 100% in sync
+    const intervalId = setInterval(() => {
+      refreshFromSupabase();
+    }, 10000);
+
+    // 4. Instant re-sync when switching tabs or bringing app to foreground on mobile
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshFromSupabase();
+      }
+    };
+    const handleFocus = () => {
+      refreshFromSupabase();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Sync current user session
@@ -494,9 +598,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateProductStock = (id: string, delta: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p))
-    );
+    setProducts((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p));
+      const target = next.find((p) => p.id === id);
+      if (target) {
+        syncProductToSupabase(target).catch((err) =>
+          console.warn('[Supabase] Sync product stock update notice:', err)
+        );
+      }
+      return next;
+    });
   };
 
   const addToCart = (product: Product, quantity = 1, colorIndex = 0) => {

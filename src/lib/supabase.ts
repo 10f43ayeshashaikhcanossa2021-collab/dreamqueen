@@ -5,7 +5,8 @@ import {
   CustomOrderRequest,
   Product,
   Coupon,
-  StoreSettings
+  StoreSettings,
+  OrderTrackingStatus
 } from '../types';
 
 // Supabase configuration provided by the user
@@ -32,10 +33,46 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * Product shape and the products table's snake_case columns.
  */
 export function productFromSupabaseRow(row: any): Product {
+  let colors = row.colors;
+  if (typeof colors === 'string') {
+    try {
+      colors = JSON.parse(colors);
+    } catch {
+      colors = [{ name: 'Original', hex: '#5B3A29' }];
+    }
+  }
+  if (!Array.isArray(colors) || colors.length === 0) {
+    colors = [{ name: 'Original', hex: '#5B3A29' }];
+  }
+
+  let images = row.images;
+  if (typeof images === 'string') {
+    try {
+      images = JSON.parse(images);
+    } catch {
+      images = [images];
+    }
+  }
+  if (!Array.isArray(images) || images.length === 0) {
+    images = ['https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=600&auto=format&fit=crop&q=80'];
+  }
+
+  let tags = row.tags;
+  if (typeof tags === 'string') {
+    try {
+      tags = JSON.parse(tags);
+    } catch {
+      tags = ['crochet', 'handmade'];
+    }
+  }
+  if (!Array.isArray(tags)) {
+    tags = ['crochet', 'handmade'];
+  }
+
   return {
     id: String(row.id),
-    name: row.name || '',
-    tagline: row.tagline || '',
+    name: row.name || 'Handmade Crochet Piece',
+    tagline: row.tagline || 'Handmade with gentle touch',
     price: Number(row.price || 0),
     originalPrice:
       row.original_price === null || row.original_price === undefined
@@ -44,13 +81,13 @@ export function productFromSupabaseRow(row: any): Product {
     rating: Number(row.rating ?? 5),
     reviewsCount: Number(row.reviews_count ?? 0),
     category: row.category as Product['category'],
-    images: Array.isArray(row.images) ? row.images : [],
+    images,
     stock: Number(row.stock ?? 0),
-    colors: Array.isArray(row.colors) ? row.colors : [],
+    colors,
     description: row.description || '',
-    yarnType: row.yarn_type || '',
-    careInstructions: row.care_instructions || '',
-    tags: Array.isArray(row.tags) ? row.tags : [],
+    yarnType: row.yarn_type || '100% Milk Cotton Yarn',
+    careInstructions: row.care_instructions || 'Gentle hand wash in cold water.',
+    tags,
     isBestSeller: Boolean(row.is_best_seller),
     isNewArrival: Boolean(row.is_new_arrival),
     isFeatured: Boolean(row.is_featured),
@@ -738,4 +775,236 @@ export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedbac
     createdAt: row.created_at
   }));
 }
+
+// =========================================================
+// COMPATIBILITY & AUTHENTICATION HELPERS
+// =========================================================
+
+export async function syncProductToSupabase(product: Product): Promise<{ success: boolean; error?: string }> {
+  try {
+    await upsertProductToSupabase(product);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function updateOrderStatusInSupabase(
+  orderId: string,
+  status: OrderTrackingStatus | string,
+  trackingNo?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const updates: any = { tracking_status: status };
+    if (trackingNo) {
+      updates.shiprocket_tracking_number = trackingNo;
+    }
+    const { error } = await supabase
+      .from('orders')
+      .update(updates)
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+    if (error) {
+      console.warn('[Supabase] updateOrderStatus notice:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function updateCustomOrderStatusInSupabase(
+  id: string,
+  status: CustomOrderRequest['status']
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('custom_orders')
+      .update({ status })
+      .eq('id', id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function signUpWithSupabase(data: {
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+}): Promise<{ user?: any; error?: string }> {
+  try {
+    const password = data.password || 'crochet123';
+    const { data: authData, error } = await supabase.auth.signUp({
+      email: data.email,
+      password,
+      options: {
+        data: {
+          full_name: data.name,
+          phone: data.phone
+        }
+      }
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return { user: authData.user };
+  } catch (err: any) {
+    return { error: err?.message || 'Signup failed' };
+  }
+}
+
+export async function signInWithSupabase(
+  email: string,
+  password: string
+): Promise<{ user?: any; error?: string }> {
+  try {
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return { user: authData.user };
+  } catch (err: any) {
+    return { error: err?.message || 'Login failed' };
+  }
+}
+
+export async function signOutSupabase(): Promise<void> {
+  try {
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.warn('Sign out error:', err);
+  }
+}
+
+export async function getSupabaseSessionUser(): Promise<any | null> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user || null;
+  } catch {
+    return null;
+  }
+}
+
+// =========================================================
+// REALTIME CROSS-DEVICE SYNCHRONIZATION
+// =========================================================
+
+export function customOrderFromSupabaseRow(row: any): CustomOrderRequest {
+  return {
+    id: String(row.id),
+    customerName: row.customer_name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    category: row.category || 'Custom Orders',
+    colorPreference: row.color_preference || '',
+    size: row.size || '',
+    budget: row.budget || '',
+    deliveryDatePreference: row.delivery_date_preference || '',
+    referenceImageUrl: row.reference_image_url || undefined,
+    message: row.message || '',
+    status: row.status || 'submitted',
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
+export function feedbackFromSupabaseRow(row: any): PurchasedItemFeedback {
+  let selectedColor = row.selected_color;
+  if (typeof selectedColor === 'string') {
+    try {
+      selectedColor = JSON.parse(selectedColor);
+    } catch {
+      selectedColor = { name: 'Original', hex: '#5B3A29' };
+    }
+  }
+
+  let artisanResponse = row.artisan_response;
+  if (typeof artisanResponse === 'string') {
+    try {
+      artisanResponse = JSON.parse(artisanResponse);
+    } catch {
+      artisanResponse = undefined;
+    }
+  }
+
+  return {
+    id: String(row.id),
+    orderId: row.order_id || '',
+    orderNumber: row.order_number || '',
+    productId: row.product_id || '',
+    productName: row.product_name || '',
+    productImage: row.product_image || '',
+    selectedColor: selectedColor || { name: 'Original', hex: '#5B3A29' },
+    customerName: row.customer_name || '',
+    customerEmail: row.customer_email || '',
+    rating: Number(row.rating || 5),
+    headline: row.headline || '',
+    comment: row.comment || '',
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    photoUrl: row.photo_url || undefined,
+    recommend: row.recommend === null ? true : Boolean(row.recommend),
+    artisanResponse: artisanResponse || undefined,
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
+export interface RealtimeSyncHandlers {
+  onProductChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
+  onOrderChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
+  onCustomOrderChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
+  onFeedbackChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
+}
+
+export function subscribeToRealtimeUpdates(handlers: RealtimeSyncHandlers) {
+  const channel = supabase
+    .channel('dreamqueen-cross-device-sync')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'products' },
+      (payload) => {
+        handlers.onProductChange?.(payload.eventType as any, payload);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'orders' },
+      (payload) => {
+        handlers.onOrderChange?.(payload.eventType as any, payload);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'custom_orders' },
+      (payload) => {
+        handlers.onCustomOrderChange?.(payload.eventType as any, payload);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'feedbacks' },
+      (payload) => {
+        handlers.onFeedbackChange?.(payload.eventType as any, payload);
+      }
+    )
+    .subscribe((status, err) => {
+      if (err) {
+        console.warn('[Supabase Realtime] Sync subscription notice:', err);
+      } else if (status === 'SUBSCRIBED') {
+        console.log('[Supabase Realtime] Live cross-device sync active 🌸');
+      }
+    });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+
 

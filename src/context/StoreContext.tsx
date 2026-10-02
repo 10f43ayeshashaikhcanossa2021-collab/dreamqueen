@@ -581,83 +581,201 @@ useEffect(() => {
   };
 }, []);
 
-  // Load shared orders and subscribe to realtime changes. Supabase is the source of truth.
+
+    // Load shared orders and subscribe to realtime changes.
+  // Supabase is the source of truth.
   useEffect(() => {
     let mounted = true;
+
     const loadOrders = async () => {
       try {
         const cloudOrders = await fetchOrdersFromSupabase();
-        if (mounted) setOrders(cloudOrders);
+
+        if (mounted) {
+          setOrders(cloudOrders);
+        }
       } catch (error) {
-        console.error('[Supabase] Could not load orders:', error);
+        console.error(
+          '[Supabase] Could not load orders:',
+          error
+        );
       }
     };
+
     loadOrders();
 
     const channel = supabase
       .channel('dreamqueen-orders-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-        if (!mounted) return;
-        if (payload.eventType === 'DELETE') {
-          const id = String((payload.old as any)?.id || '');
-          if (id) setOrders(prev => prev.filter(order => order.id !== id));
-          return;
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders'
+        },
+        (payload) => {
+          if (!mounted) return;
+
+          if (payload.eventType === 'DELETE') {
+            const id = String(
+              (payload.old as any)?.id || ''
+            );
+
+            if (id) {
+              setOrders((prev) =>
+                prev.filter((order) => order.id !== id)
+              );
+            }
+
+            return;
+          }
+
+          const row = payload.new as any;
+
+          if (!row?.id) return;
+
+          const next: Order = {
+            id: String(row.id),
+            orderNumber: row.order_number || '',
+            customer: row.customer || {},
+            shippingAddress: row.shipping_address || {},
+            items: row.items || [],
+            subtotal: Number(row.subtotal || 0),
+            discount: Number(row.discount || 0),
+            couponCode:
+              row.coupon_code || undefined,
+            shippingFee: Number(
+              row.shipping_fee || 0
+            ),
+            codFee: Number(row.cod_fee || 0),
+            total: Number(row.total || 0),
+            paymentMethod: row.payment_method,
+            paymentStatus: row.payment_status,
+            razorpayPaymentId:
+              row.razorpay_payment_id ||
+              undefined,
+            razorpayOrderId:
+              row.razorpay_order_id ||
+              undefined,
+            trackingStatus:
+              row.tracking_status || 'preparing',
+            shiprocketTrackingNumber:
+              row.shiprocket_tracking_number ||
+              undefined,
+            estimatedDeliveryDate:
+              row.estimated_delivery_date || '',
+            notes: row.notes || undefined,
+            createdAt: row.created_at
+          };
+
+          setOrders((prev) =>
+            prev.some((order) => order.id === next.id)
+              ? prev.map((order) =>
+                  order.id === next.id
+                    ? next
+                    : order
+                )
+              : [next, ...prev]
+          );
         }
-        const row = payload.new as any;
-        if (!row?.id) return;
-        const next = {
-          id: String(row.id), orderNumber: row.order_number || '', customer: row.customer || {},
-          shippingAddress: row.shipping_address || {}, items: row.items || [], subtotal: Number(row.subtotal || 0),
-          discount: Number(row.discount || 0), couponCode: row.coupon_code || undefined,
-          shippingFee: Number(row.shipping_fee || 0), codFee: Number(row.cod_fee || 0), total: Number(row.total || 0),
-          paymentMethod: row.payment_method, paymentStatus: row.payment_status,
-          razorpayPaymentId: row.razorpay_payment_id || undefined, razorpayOrderId: row.razorpay_order_id || undefined,
-          trackingStatus: row.tracking_status || 'preparing', shiprocketTrackingNumber: row.shiprocket_tracking_number || undefined,
-          estimatedDeliveryDate: row.estimated_delivery_date || '', notes: row.notes || undefined, createdAt: row.created_at
-        } as Order;
-        setOrders(prev => prev.some(o => o.id === next.id) ? prev.map(o => o.id === next.id ? next : o) : [next, ...prev]);
-      })
+      )
       .subscribe((status) => {
-  console.log('[Supabase] Orders realtime:', status);
+        console.log(
+          '[Supabase] Orders realtime:',
+          status
+        );
 
-  if (status === 'CHANNEL_ERROR') {
-    console.error('[Supabase] Orders realtime channel failed.');
-  }
+        if (status === 'CHANNEL_ERROR') {
+          console.error(
+            '[Supabase] Orders realtime channel failed.'
+          );
+        }
 
-  if (status === 'TIMED_OUT') {
-    console.error('[Supabase] Orders realtime channel timed out.');
-  }
-});
+        if (status === 'TIMED_OUT') {
+          console.error(
+            '[Supabase] Orders realtime channel timed out.'
+          );
+        }
+      });
 
-  // Load shared custom orders and subscribe to changes.
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Load shared custom orders and subscribe to realtime changes.
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
+
+    const loadCustomOrders = async () => {
       try {
-        const data = await fetchCustomOrdersFromSupabase();
-        if (mounted) setCustomOrders(data);
+        const data =
+          await fetchCustomOrdersFromSupabase();
+
+        if (mounted) {
+          setCustomOrders(data);
+        }
       } catch (error) {
-        console.error('[Supabase] Could not load custom orders:', error);
+        console.error(
+          '[Supabase] Could not load custom orders:',
+          error
+        );
       }
     };
-    load();
+
+    loadCustomOrders();
+
     const channel = supabase
       .channel('dreamqueen-custom-orders-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_orders' }, async () => {
-        try { const data = await fetchCustomOrdersFromSupabase(); if (mounted) setCustomOrders(data); }
-        catch (error) { console.error('[Supabase] Custom orders refresh failed:', error); }
-      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'custom_orders'
+        },
+        async () => {
+          try {
+            const data =
+              await fetchCustomOrdersFromSupabase();
+
+            if (mounted) {
+              setCustomOrders(data);
+            }
+          } catch (error) {
+            console.error(
+              '[Supabase] Custom orders refresh failed:',
+              error
+            );
+          }
+        }
+      )
       .subscribe((status) => {
-  console.log('[Supabase] Orders realtime:', status);
+        console.log(
+          '[Supabase] Custom orders realtime:',
+          status
+        );
 
-  if (status === 'CHANNEL_ERROR') {
-    console.error('[Supabase] Orders realtime channel failed.');
-  }
+        if (status === 'CHANNEL_ERROR') {
+          console.error(
+            '[Supabase] Custom orders realtime channel failed.'
+          );
+        }
 
-  if (status === 'TIMED_OUT') {
-    console.error('[Supabase] Orders realtime channel timed out.');
-  }
-});
+        if (status === 'TIMED_OUT') {
+          console.error(
+            '[Supabase] Custom orders realtime channel timed out.'
+          );
+        }
+      });
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Restore the real Supabase Auth session on every device/browser.
   useEffect(() => {
     let mounted = true;
@@ -1354,84 +1472,86 @@ const deleteCoupon = (code: string) => {
     } catch (error: any) { console.error('[Supabase] Profile update failed:', error); showToast(error?.message || 'Profile update failed', 'error'); }
   };
 
-  return (
-    <StoreContext.Provider
-      value={{
-        products,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        updateProductStock,
-        cart,
-        addToCart,
-        removeFromCart,
-        updateCartQuantity,
-        clearCart,
-        cartCount,
-        cartSubtotal,
-        wishlist,
-        toggleWishlist,
-        isInWishlist,
-        orders,
-        createOrder,
-        updateOrderStatus,
-        getOrderByIdOrNumber,
-        coupons,
-        activeCoupon,
-        applyCoupon,
-        removeCoupon,
-        addCoupon,
-        deleteCoupon,
-        customOrders,
-        submitCustomOrder,
-        updateCustomOrderStatus,
-        feedbacks,
-        submitFeedback,
-        getFeedbackForOrderItem,
-        replyToFeedback,
-        activeFeedbackTarget,
-        setActiveFeedbackTarget,
-        storeSettings,
-        updateStoreSettings,
-        currentUser,
-        isAdmin,
-        setIsAdmin,
-        isAuthModalOpen,
-        setIsAuthModalOpen,
-        authModalIntent,
-        setAuthModalIntent,
-        openAuthModal,
-        registerUser,
-        loginUser,
-        logoutUser,
-        updateUserProfile,
-        activeTab,
-        setActiveTab,
-        selectedProduct,
-        setSelectedProduct,
-        isCartOpen,
-        setIsCartOpen,
-        isCheckoutOpen,
-        setIsCheckoutOpen,
-        isUpiScannerOpen,
-        setIsUpiScannerOpen,
-        trackingSearchId,
-        setTrackingSearchId,
-        searchQuery,
-        setSearchQuery,
-        toasts,
-        showToast
-      }}
-    >
-      {children}
-    </StoreContext.Provider>
-  );
+ return (
+  <StoreContext.Provider
+    value={{
+      products,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      updateProductStock,
+      cart,
+      addToCart,
+      removeFromCart,
+      updateCartQuantity,
+      clearCart,
+      cartCount,
+      cartSubtotal,
+      wishlist,
+      toggleWishlist,
+      isInWishlist,
+      orders,
+      createOrder,
+      updateOrderStatus,
+      getOrderByIdOrNumber,
+      coupons,
+      activeCoupon,
+      applyCoupon,
+      removeCoupon,
+      addCoupon,
+      deleteCoupon,
+      customOrders,
+      submitCustomOrder,
+      updateCustomOrderStatus,
+      feedbacks,
+      submitFeedback,
+      getFeedbackForOrderItem,
+      replyToFeedback,
+      activeFeedbackTarget,
+      setActiveFeedbackTarget,
+      storeSettings,
+      updateStoreSettings,
+      currentUser,
+      isAdmin,
+      setIsAdmin,
+      isAuthModalOpen,
+      setIsAuthModalOpen,
+      authModalIntent,
+      setAuthModalIntent,
+      openAuthModal,
+      registerUser,
+      loginUser,
+      logoutUser,
+      updateUserProfile,
+      activeTab,
+      setActiveTab,
+      selectedProduct,
+      setSelectedProduct,
+      isCartOpen,
+      setIsCartOpen,
+      isCheckoutOpen,
+      setIsCheckoutOpen,
+      isUpiScannerOpen,
+      setIsUpiScannerOpen,
+      trackingSearchId,
+      setTrackingSearchId,
+      searchQuery,
+      setSearchQuery,
+      toasts,
+      showToast
+    }}
+  >
+    {children}
+  </StoreContext.Provider>
+);
 };
 
 export const useStore = () => {
   const context = useContext(StoreContext);
+
   if (!context) {
     throw new Error('useStore must be used within a StoreProvider');
   }
+
   return context;
 };

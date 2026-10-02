@@ -18,17 +18,31 @@ import {
 } from '../data/initialProducts';
 import {
   supabase,
+
   fetchProductsFromSupabase,
   upsertProductToSupabase,
   deleteProductFromSupabase,
   seedInitialProductsToSupabase,
+
   fetchOrdersFromSupabase,
+
   fetchCustomOrdersFromSupabase,
+
   fetchCurrentProfile,
   updateCurrentProfile,
+
   syncOrderToSupabase,
   syncCustomOrderToSupabase,
-  syncFeedbackToSupabase
+  syncFeedbackToSupabase,
+
+  fetchCouponsFromSupabase,
+  upsertCouponToSupabase,
+  deleteCouponFromSupabase,
+
+  fetchStoreSettingsFromSupabase,
+  updateStoreSettingsInSupabase,
+
+  fetchFeedbacksFromSupabase
 } from '../lib/supabase';
 
 interface ToastInfo {
@@ -217,24 +231,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   } | null>(null);
 
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
-    try {
-      const saved = localStorage.getItem('dreamqueen_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          supportPhone: '8097706536',
-          supportEmail: 'dreamqueen29@gmail.com',
-          upiId: '8097706536@postbank',
-          upiPayeeName: 'AYESHA LUKMAN SHAIKH'
-        };
-      }
-      return DEFAULT_SETTINGS;
-    } catch {
-      return DEFAULT_SETTINGS;
+  try {
+    const saved = localStorage.getItem('dreamqueen_settings');
+
+    if (saved) {
+      return {
+        ...DEFAULT_SETTINGS,
+        ...JSON.parse(saved)
+      };
     }
-  });
+
+    return DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+});
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -346,16 +357,229 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.warn('[Supabase] Product realtime channel failed. Cloud loading still works.');
-        }
-      });
+  console.log('[Supabase] Product realtime:', status);
+
+  if (status === 'CHANNEL_ERROR') {
+    console.error('[Supabase] Product realtime channel failed.');
+  }
+
+  if (status === 'TIMED_OUT') {
+    console.error('[Supabase] Product realtime channel timed out.');
+  }
+});
 
     return () => {
       mounted = false;
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // =========================================================
+// SHARED STORE SETTINGS
+// =========================================================
+
+useEffect(() => {
+  let mounted = true;
+
+  const loadSettings = async () => {
+    try {
+      const cloudSettings =
+        await fetchStoreSettingsFromSupabase();
+
+      if (!mounted || !cloudSettings) return;
+
+      setStoreSettings((previous) => ({
+        ...previous,
+        ...cloudSettings,
+
+        // Keep private/local application credential out
+        // of the public database.
+        shiprocketApiKey:
+          previous.shiprocketApiKey
+      }));
+    } catch (error) {
+      console.error(
+        '[Supabase] Could not load store settings:',
+        error
+      );
+    }
+  };
+
+  loadSettings();
+
+  const channel = supabase
+    .channel('dreamqueen-settings-sync')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'store_settings'
+      },
+      async () => {
+        try {
+          const updated =
+            await fetchStoreSettingsFromSupabase();
+
+          if (mounted && updated) {
+            setStoreSettings((previous) => ({
+              ...previous,
+              ...updated,
+              shiprocketApiKey:
+                previous.shiprocketApiKey
+            }));
+          }
+        } catch (error) {
+          console.error(
+            '[Supabase] Settings realtime refresh failed:',
+            error
+          );
+        }
+      }
+    )
+    .subscribe((status) => {
+  console.log('[Supabase] Settings realtime:', status);
+
+  if (status === 'CHANNEL_ERROR') {
+    console.error('[Supabase] Settings realtime channel failed.');
+  }
+
+  if (status === 'TIMED_OUT') {
+    console.error('[Supabase] Settings realtime channel timed out.');
+  }
+});
+
+  return () => {
+    mounted = false;
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+  // =========================================================
+// SHARED COUPONS
+// =========================================================
+
+useEffect(() => {
+  let mounted = true;
+
+  const loadCoupons = async () => {
+    try {
+      const cloudCoupons =
+        await fetchCouponsFromSupabase();
+
+      if (!mounted) return;
+
+      setCoupons(cloudCoupons);
+    } catch (error) {
+      console.error(
+        '[Supabase] Could not load coupons:',
+        error
+      );
+    }
+  };
+
+  loadCoupons();
+
+  const channel = supabase
+    .channel('dreamqueen-coupons-sync')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'coupons'
+      },
+      async () => {
+        try {
+          const updated =
+            await fetchCouponsFromSupabase();
+
+          if (mounted) {
+            setCoupons(updated);
+          }
+        } catch (error) {
+          console.error(
+            '[Supabase] Coupon realtime refresh failed:',
+            error
+          );
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log(
+        '[Supabase] Coupons realtime:',
+        status
+      );
+    });
+
+  return () => {
+    mounted = false;
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+// =========================================================
+// SHARED FEEDBACKS
+// =========================================================
+
+useEffect(() => {
+  let mounted = true;
+
+  const loadFeedbacks = async () => {
+    try {
+      const cloudFeedbacks =
+        await fetchFeedbacksFromSupabase();
+
+      if (mounted) {
+        setFeedbacks(cloudFeedbacks);
+      }
+    } catch (error) {
+      console.error(
+        '[Supabase] Could not load feedbacks:',
+        error
+      );
+    }
+  };
+
+  loadFeedbacks();
+
+  const channel = supabase
+    .channel('dreamqueen-feedbacks-sync')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'feedbacks'
+      },
+      async () => {
+        try {
+          const updated =
+            await fetchFeedbacksFromSupabase();
+
+          if (mounted) {
+            setFeedbacks(updated);
+          }
+        } catch (error) {
+          console.error(
+            '[Supabase] Feedback realtime refresh failed:',
+            error
+          );
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log(
+        '[Supabase] Feedback realtime:',
+        status
+      );
+    });
+
+  return () => {
+    mounted = false;
+    supabase.removeChannel(channel);
+  };
+}, []);
 
   // Load shared orders and subscribe to realtime changes. Supabase is the source of truth.
   useEffect(() => {
@@ -393,9 +617,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } as Order;
         setOrders(prev => prev.some(o => o.id === next.id) ? prev.map(o => o.id === next.id ? next : o) : [next, ...prev]);
       })
-      .subscribe(status => console.log('[Supabase] Orders realtime:', status));
-    return () => { mounted = false; supabase.removeChannel(channel); };
-  }, []);
+      .subscribe((status) => {
+  console.log('[Supabase] Orders realtime:', status);
+
+  if (status === 'CHANNEL_ERROR') {
+    console.error('[Supabase] Orders realtime channel failed.');
+  }
+
+  if (status === 'TIMED_OUT') {
+    console.error('[Supabase] Orders realtime channel timed out.');
+  }
+});
 
   // Load shared custom orders and subscribe to changes.
   useEffect(() => {
@@ -415,10 +647,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try { const data = await fetchCustomOrdersFromSupabase(); if (mounted) setCustomOrders(data); }
         catch (error) { console.error('[Supabase] Custom orders refresh failed:', error); }
       })
-      .subscribe();
-    return () => { mounted = false; supabase.removeChannel(channel); };
-  }, []);
+      .subscribe((status) => {
+  console.log('[Supabase] Orders realtime:', status);
 
+  if (status === 'CHANNEL_ERROR') {
+    console.error('[Supabase] Orders realtime channel failed.');
+  }
+
+  if (status === 'TIMED_OUT') {
+    console.error('[Supabase] Orders realtime channel timed out.');
+  }
+});
   // Restore the real Supabase Auth session on every device/browser.
   useEffect(() => {
     let mounted = true;
@@ -497,28 +736,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [wishlist]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_coupons', JSON.stringify(coupons));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
-  }, [coupons]);
+  try {
+    localStorage.setItem(
+      'dreamqueen_settings',
+      JSON.stringify(storeSettings)
+    );
+  } catch (error) {
+    console.warn(
+      '[Storage] Store settings cache save failed:',
+      error
+    );
+  }
+}, [storeSettings]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_feedbacks', JSON.stringify(feedbacks));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
-  }, [feedbacks]);
+  
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_settings', JSON.stringify(storeSettings));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
-  }, [storeSettings]);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -545,20 +777,54 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    const existing = products.find((p) => p.id === id);
-    if (!existing) return;
+  const updateProduct = (
+  id: string,
+  updates: Partial<Product>
+) => {
+  const existing = products.find(
+    (p) => p.id === id
+  );
 
-    const updated = { ...existing, ...updates };
-    setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+  if (!existing) return;
 
-    upsertProductToSupabase(updated).catch((error) => {
-      console.error('[Supabase] Could not update product:', error);
-      showToast(`Cloud update failed: ${error?.message || 'Unknown error'}`, 'error');
-    });
-
-    showToast('Product details updated successfully');
+  const updated: Product = {
+    ...existing,
+    ...updates
   };
+
+  // Update UI immediately
+  setProducts((prev) =>
+    prev.map((p) =>
+      p.id === id ? updated : p
+    )
+  );
+
+  // Save to shared Supabase database
+  upsertProductToSupabase(updated)
+    .then(() => {
+      console.log(
+        '[Supabase] Product updated successfully:',
+        updated.id
+      );
+
+      showToast(
+        'Product updated and synced to all devices'
+      );
+    })
+    .catch((error: any) => {
+      console.error(
+        '[Supabase] Product update failed:',
+        error
+      );
+
+      showToast(
+        `Cloud update failed: ${
+          error?.message || 'Database error'
+        }`,
+        'error'
+      );
+    });
+};
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
@@ -571,11 +837,56 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateProductStock = (id: string, delta: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p))
-    );
+  const updateProductStock = async (
+  id: string,
+  delta: number
+): Promise<void> => {
+  const existing = products.find(
+    (product) => product.id === id
+  );
+
+  if (!existing) return;
+
+  const newStock = Math.max(
+    0,
+    existing.stock + delta
+  );
+
+  const updatedProduct: Product = {
+    ...existing,
+    stock: newStock
   };
+
+  try {
+    // FIRST save to Supabase
+    await upsertProductToSupabase(updatedProduct);
+
+    // THEN update local UI
+    setProducts((prev) =>
+      prev.map((product) =>
+        product.id === id
+          ? updatedProduct
+          : product
+      )
+    );
+
+    console.log(
+      `[Supabase] Stock updated: ${existing.name} → ${newStock}`
+    );
+  } catch (error: any) {
+    console.error(
+      '[Supabase] Stock update failed:',
+      error
+    );
+
+    showToast(
+      `Stock update failed: ${
+        error?.message || 'Database error'
+      }`,
+      'error'
+    );
+  }
+};
 
   const addToCart = (product: Product, quantity = 1, colorIndex = 0) => {
     const chosenColor = product.colors && product.colors.length > 0
@@ -645,7 +956,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const isInWishlist = (productId: string) => wishlist.includes(productId);
 
-  const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>): Order => {
+  const createOrder = async (
+  orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>
+): Promise<Order> => {
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const orderNumber = `DQ-${randomNum}`;
     const newOrder: Order = {
@@ -658,9 +971,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOrders((prev) => [newOrder, ...prev]);
 
     // deduct stock
-    newOrder.items.forEach((item) => {
-      updateProductStock(item.productId, -item.quantity);
-    });
+    await Promise.all(
+  newOrder.items.map((item) =>
+    updateProductStock(
+      item.productId,
+      -item.quantity
+    )
+  )
+);
 
     // Asynchronously sync order to Supabase
     syncOrderToSupabase(newOrder).then(result => {
@@ -718,14 +1036,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addCoupon = (coupon: Coupon) => {
-    setCoupons((prev) => [coupon, ...prev]);
-    showToast(`Coupon ${coupon.code} created!`);
-  };
+  setCoupons((prev) => [
+    coupon,
+    ...prev.filter(
+      (c) => c.code !== coupon.code
+    )
+  ]);
 
-  const deleteCoupon = (code: string) => {
-    setCoupons((prev) => prev.filter((c) => c.code !== code));
-    showToast(`Coupon deleted`, 'info');
-  };
+  upsertCouponToSupabase(coupon)
+    .then(() => {
+      showToast(
+        `Coupon ${coupon.code} synced to all devices`
+      );
+    })
+    .catch((error: any) => {
+      console.error(
+        '[Supabase] Coupon save failed:',
+        error
+      );
+
+      showToast(
+        `Coupon cloud save failed: ${
+          error?.message || 'Database error'
+        }`,
+        'error'
+      );
+    });
+};
+
+
+const deleteCoupon = (code: string) => {
+  setCoupons((prev) =>
+    prev.filter((c) => c.code !== code)
+  );
+
+  deleteCouponFromSupabase(code)
+    .then(() => {
+      showToast(
+        'Coupon deleted from all devices',
+        'info'
+      );
+    })
+    .catch((error: any) => {
+      console.error(
+        '[Supabase] Coupon delete failed:',
+        error
+      );
+
+      showToast(
+        `Coupon cloud delete failed: ${
+          error?.message || 'Database error'
+        }`,
+        'error'
+      );
+    });
+};
 
   const submitCustomOrder = (request: Omit<CustomOrderRequest, 'id' | 'status' | 'createdAt'>) => {
     const newRequest: CustomOrderRequest = {
@@ -826,29 +1191,97 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  const replyToFeedback = (feedbackId: string, replyText: string) => {
-    setFeedbacks((prev) =>
-      prev.map((f) => {
-        if (f.id === feedbackId) {
-          return {
-            ...f,
-            artisanResponse: {
-              text: replyText,
-              respondedAt: new Date().toISOString(),
-              author: 'DreamQueen Atelier Team'
-            }
-          };
-        }
-        return f;
-      })
-    );
-    showToast('Artisan response posted to customer review! 💌');
+  const replyToFeedback = (
+  feedbackId: string,
+  replyText: string
+) => {
+  const existing = feedbacks.find(
+    (feedback) => feedback.id === feedbackId
+  );
+
+  if (!existing) return;
+
+  const updatedFeedback: PurchasedItemFeedback = {
+    ...existing,
+
+    artisanResponse: {
+      text: replyText,
+      respondedAt: new Date().toISOString(),
+      author: 'DreamQueen Atelier Team'
+    }
   };
 
-  const updateStoreSettings = (settings: Partial<StoreSettings>) => {
-    setStoreSettings((prev) => ({ ...prev, ...settings }));
-    showToast('Store settings saved');
+  // Update current device
+  setFeedbacks((prev) =>
+    prev.map((feedback) =>
+      feedback.id === feedbackId
+        ? updatedFeedback
+        : feedback
+    )
+  );
+
+  // Save shared version
+  syncFeedbackToSupabase(updatedFeedback)
+    .then((result) => {
+      if (!result.success) {
+        throw new Error(
+          result.error || 'Feedback update failed'
+        );
+      }
+
+      showToast(
+        'Artisan response synced to all devices 💌'
+      );
+    })
+    .catch((error: any) => {
+      console.error(
+        '[Supabase] Feedback reply failed:',
+        error
+      );
+
+      showToast(
+        `Reply cloud sync failed: ${
+          error?.message || 'Database error'
+        }`,
+        'error'
+      );
+    });
+};
+
+  const updateStoreSettings = (
+  settings: Partial<StoreSettings>
+) => {
+  const updatedSettings: StoreSettings = {
+    ...storeSettings,
+    ...settings
   };
+
+  // Update current browser
+  setStoreSettings(updatedSettings);
+
+  // Save to Supabase
+  updateStoreSettingsInSupabase(
+    updatedSettings
+  )
+    .then(() => {
+      showToast(
+        'Store settings synced to all devices'
+      );
+    })
+    .catch((error: any) => {
+      console.error(
+        '[Supabase] Settings save failed:',
+        error
+      );
+
+      showToast(
+        `Settings cloud save failed: ${
+          error?.message || 'Database error'
+        }`,
+        'error'
+      );
+    });
+};
 
   const registerUser = async (data: { name: string; email: string; phone: string; password?: string }): Promise<boolean> => {
     const trimmedName = data.name.trim();

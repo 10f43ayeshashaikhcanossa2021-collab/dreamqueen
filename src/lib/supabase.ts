@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { Order, PurchasedItemFeedback, CustomOrderRequest, Product } from '../types';
+import {
+  Order,
+  PurchasedItemFeedback,
+  CustomOrderRequest,
+  Product,
+  Coupon,
+  StoreSettings
+} from '../types';
 
 // Supabase configuration provided by the user
 const env = (import.meta as any)?.env || {};
@@ -399,7 +406,10 @@ export async function syncFeedbackToSupabase(
   feedback: PurchasedItemFeedback
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.from('feedbacks').upsert({
+    const { error } = await supabase
+  .from('feedbacks')
+  .upsert(
+    {
       id: feedback.id,
       order_id: feedback.orderId,
       order_number: feedback.orderNumber,
@@ -413,11 +423,15 @@ export async function syncFeedbackToSupabase(
       headline: feedback.headline,
       comment: feedback.comment,
       tags: feedback.tags,
-      photo_url: feedback.photoUrl,
+      photo_url: feedback.photoUrl ?? null,
       recommend: feedback.recommend,
       artisan_response: feedback.artisanResponse,
       created_at: feedback.createdAt
-    });
+    },
+    {
+      onConflict: 'id'
+    }
+  );
 
     if (error) {
       console.warn('[Supabase] feedbacks sync notice:', error.message);
@@ -533,3 +547,195 @@ CREATE POLICY "Allow public read-write custom_orders" ON public.custom_orders FO
 CREATE POLICY "Allow public read-write feedbacks" ON public.feedbacks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 `;
+
+// =========================================================
+// COUPONS
+// =========================================================
+
+export async function fetchCouponsFromSupabase(): Promise<Coupon[]> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((row: any) => ({
+    code: String(row.code),
+    discountPercent: Number(row.discount_percent || 0),
+    minOrderAmount: Number(row.min_order_amount || 0),
+    maxDiscount:
+      row.max_discount == null
+        ? undefined
+        : Number(row.max_discount),
+    description: row.description || '',
+    isActive: Boolean(row.is_active)
+  }));
+}
+
+
+export async function upsertCouponToSupabase(
+  coupon: Coupon
+): Promise<void> {
+  const { error } = await supabase
+    .from('coupons')
+    .upsert(
+      {
+        code: coupon.code.toUpperCase(),
+        discount_percent: coupon.discountPercent,
+        min_order_amount: coupon.minOrderAmount,
+        max_discount: coupon.maxDiscount ?? null,
+        description: coupon.description || '',
+        is_active: coupon.isActive,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'code'
+      }
+    );
+
+  if (error) throw error;
+}
+
+
+export async function deleteCouponFromSupabase(
+  code: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('coupons')
+    .delete()
+    .eq('code', code);
+
+  if (error) throw error;
+}
+
+
+// =========================================================
+// STORE SETTINGS
+// =========================================================
+
+export async function fetchStoreSettingsFromSupabase(): Promise<StoreSettings | null> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (!data) return null;
+
+  return {
+    codEnabled: Boolean(data.cod_enabled),
+    codFee: Number(data.cod_fee || 0),
+    freeShippingThreshold: Number(
+      data.free_shipping_threshold || 0
+    ),
+    standardShippingFee: Number(
+      data.standard_shipping_fee || 0
+    ),
+
+    // These should NOT be stored in frontend-visible settings
+    // as private API credentials.
+    shiprocketApiKey: '',
+
+    supportPhone: data.support_phone || '',
+    supportEmail: data.support_email || '',
+
+    pinterestUrl: data.pinterest_url || '',
+    pinterestHandle: data.pinterest_handle || '',
+
+    upiId: data.upi_id || '',
+    upiPayeeName: data.upi_payee_name || ''
+  };
+}
+
+
+export async function updateStoreSettingsInSupabase(
+  settings: StoreSettings
+): Promise<void> {
+  const { error } = await supabase
+    .from('store_settings')
+    .upsert(
+      {
+        id: 1,
+
+        cod_enabled: settings.codEnabled,
+        cod_fee: settings.codFee,
+        free_shipping_threshold:
+          settings.freeShippingThreshold,
+        standard_shipping_fee:
+          settings.standardShippingFee,
+
+        support_phone: settings.supportPhone,
+        support_email: settings.supportEmail,
+
+        pinterest_url: settings.pinterestUrl,
+        pinterest_handle: settings.pinterestHandle,
+
+        upi_id: settings.upiId,
+        upi_payee_name: settings.upiPayeeName,
+
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'id'
+      }
+    );
+
+  if (error) throw error;
+}
+
+
+// =========================================================
+// FEEDBACKS
+// =========================================================
+
+export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedback[]> {
+  const { data, error } = await supabase
+    .from('feedbacks')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((row: any) => ({
+    id: String(row.id),
+
+    orderId: row.order_id || '',
+    orderNumber: row.order_number || '',
+
+    productId: row.product_id || '',
+    productName: row.product_name || '',
+    productImage: row.product_image || '',
+
+    selectedColor: row.selected_color || {
+      name: 'Original',
+      hex: '#5B3A29'
+    },
+
+    customerName: row.customer_name || '',
+    customerEmail: row.customer_email || '',
+
+    rating: Number(row.rating || 5),
+    headline: row.headline || '',
+    comment: row.comment || '',
+
+    tags: Array.isArray(row.tags)
+      ? row.tags
+      : [],
+
+    photoUrl: row.photo_url || undefined,
+
+    recommend:
+      row.recommend === null
+        ? true
+        : Boolean(row.recommend),
+
+    artisanResponse:
+      row.artisan_response || undefined,
+
+    createdAt: row.created_at
+  }));
+}
+

@@ -53,9 +53,9 @@ interface ToastInfo {
 
 interface StoreContextType {
   products: Product[];
-  addProduct: (product: Omit<Product, 'id'>) => void;
+  addProduct: (product: Omit<Product, 'id'>) =>Promise<void>;
   updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
+  deleteProduct: (id: string) =>Promise< void>;
   updateProductStock: (id: string, delta: number) => void;
 
   cart: CartItem[];
@@ -173,15 +173,7 @@ const DEFAULT_USER: User = {
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Products are store-wide data. localStorage is kept only as a temporary
   // fallback so the storefront can render while Supabase is loading.
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('dreamqueen_products_v4');
-      if (saved) return JSON.parse(saved);
-      return INITIAL_PRODUCTS;
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
-  });
+  const [products, setProducts] = useState<Product[]>([]);
 
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
@@ -282,33 +274,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let mounted = true;
 
     const loadProducts = async () => {
-      try {
-        const cloudProducts = await fetchProductsFromSupabase();
-        console.log(
-  '[DreamQueen] Products loaded from Supabase:',
-  cloudProducts.length,
-  cloudProducts.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-  }))
-                      );
-    
-        if (!mounted) return;
+  try {
+    const cloudProducts = await fetchProductsFromSupabase();
 
-        if (cloudProducts.length > 0) {
-          setProducts(cloudProducts);
-        } else {
-          // First setup: move the built-in catalog to the shared database.
-          const seeded = await seedInitialProductsToSupabase(INITIAL_PRODUCTS);
-          if (mounted) setProducts(seeded);
-        }
-      } catch (error) {
-        console.warn('[Supabase] Product catalog load failed; using local fallback:', error);
-      }
-    };
+    if (!mounted) return;
 
-    loadProducts();
+    setProducts(cloudProducts);
+
+    console.log(
+      '[Supabase] Products loaded:',
+      cloudProducts.length
+    );
+  } catch (error) {
+    console.error(
+      '[Supabase] Product catalog load failed:',
+      error
+    );
+
+    if (mounted) {
+      setProducts([]);
+    }
+  }
+};
+
 
     // Realtime keeps the phone and admin browser in sync without refresh.
     const channel = supabase
@@ -838,13 +826,7 @@ useEffect(() => {
 
   // Keep a browser fallback cache for faster first paint/offline viewing.
   // Cloud writes are handled by addProduct/updateProduct/deleteProduct above.
-  useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_products_v4', JSON.stringify(products));
-    } catch (e) {
-      console.warn('Product fallback cache save failed', e);
-    }
-  }, [products]);
+  
 
   useEffect(() => {
     try {
@@ -887,22 +869,36 @@ useEffect(() => {
     }, 3800);
   };
 
-  const addProduct = (productData: Omit<Product, 'id'>) => {
-    const newProduct: Product = {
-      ...productData,
-      id: `prod-${Date.now()}`
-    };
+  const addProduct = async (productData: Omit<Product, 'id'>) => {
+  const newProduct: Product = {
+    ...productData,
+    id: `prod-${Date.now()}`
+  };
 
-    // Update the UI immediately, then persist to the shared cloud database.
+  try {
+    // FIRST save to Supabase
+    await upsertProductToSupabase(newProduct);
+
+    // THEN update the local UI
     setProducts((prev) => [newProduct, ...prev]);
 
-    upsertProductToSupabase(newProduct).then(() => {
-      showToast(`Added "${newProduct.name}" to the shared store catalog!`);
-    }).catch((error) => {
-      console.error('[Supabase] Could not save product:', error);
-      showToast(`Product added locally, but cloud save failed: ${error?.message || 'Unknown error'}`, 'error');
-    });
-  };
+    showToast(
+      `"${newProduct.name}" added and synced to all devices`
+    );
+  } catch (error: any) {
+    console.error(
+      '[Supabase] Could not save product:',
+      error
+    );
+
+    showToast(
+      `Product could not be saved: ${
+        error?.message || 'Database error'
+      }`,
+      'error'
+    );
+  }
+};
 
   const updateProduct = (
   id: string,
@@ -953,16 +949,34 @@ useEffect(() => {
     });
 };
 
-  const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+  const deleteProduct = async (id: string) => {
+  try {
+    // FIRST delete from Supabase
+    await deleteProductFromSupabase(id);
 
-    deleteProductFromSupabase(id).then(() => {
-      showToast('Product removed from the shared store catalog', 'info');
-    }).catch((error) => {
-      console.error('[Supabase] Could not delete product:', error);
-      showToast(`Cloud delete failed: ${error?.message || 'Unknown error'}`, 'error');
-    });
-  };
+    // THEN update the local UI
+    setProducts((prev) =>
+      prev.filter((p) => p.id !== id)
+    );
+
+    showToast(
+      'Product removed and synced to all devices',
+      'info'
+    );
+  } catch (error: any) {
+    console.error(
+      '[Supabase] Could not delete product:',
+      error
+    );
+
+    showToast(
+      `Cloud delete failed: ${
+        error?.message || 'Database error'
+      }`,
+      'error'
+    );
+  }
+};
 
   const updateProductStock = async (
   id: string,

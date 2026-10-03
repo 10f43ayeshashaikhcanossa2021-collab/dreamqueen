@@ -253,11 +253,30 @@ export function orderFromSupabaseRow(row: any): Order {
     }
   }
 
+  const street = shippingAddress?.address || shippingAddress?.addressLine1 || '';
+  const normalizedAddress = {
+    fullName: shippingAddress?.fullName || customer?.name || 'Customer',
+    phone: shippingAddress?.phone || customer?.phone || '',
+    email: shippingAddress?.email || customer?.email || '',
+    address: street,
+    addressLine1: street,
+    addressLine2: shippingAddress?.addressLine2 || '',
+    city: shippingAddress?.city || '',
+    state: shippingAddress?.state || '',
+    pincode: shippingAddress?.pincode || '',
+  };
+
+  const normalizedCustomer = {
+    name: customer?.name || shippingAddress?.fullName || 'Customer',
+    email: customer?.email || shippingAddress?.email || '',
+    phone: customer?.phone || shippingAddress?.phone || '',
+  };
+
   return {
     id: String(row.id),
     orderNumber: row.order_number || '',
-    customer: customer || { name: '', email: '', phone: '' },
-    shippingAddress: shippingAddress || { fullName: '', phone: '', email: '', address: '', city: '', state: '', pincode: '' },
+    customer: normalizedCustomer,
+    shippingAddress: normalizedAddress,
     items: Array.isArray(items) ? items : [],
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
@@ -340,36 +359,29 @@ export async function syncOrderToSupabase(
   order: Order
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get the currently logged-in Supabase user
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      console.error('[Supabase] Could not get authenticated user:', userError);
-    }
+    const shipping = order.shippingAddress || ({} as any);
+    const streetAddr = shipping.address || shipping.addressLine1 || '';
 
     const orderRow = {
       id: order.id,
-      user_id: user?.id ?? null,
-
       order_number: order.orderNumber,
 
-      customer: order.customer ?? {
-        name: '',
-        email: '',
-        phone: '',
+      customer: {
+        name: order.customer?.name || shipping.fullName || 'Valued Customer',
+        email: order.customer?.email || shipping.email || '',
+        phone: order.customer?.phone || shipping.phone || '',
       },
 
-      shipping_address: order.shippingAddress ?? {
-        fullName: '',
-        phone: '',
-        email: '',
-        address: '',
-        city: '',
-        state: '',
-        pincode: '',
+      shipping_address: {
+        fullName: shipping.fullName || order.customer?.name || 'Valued Customer',
+        phone: shipping.phone || order.customer?.phone || '',
+        email: shipping.email || order.customer?.email || '',
+        address: streetAddr,
+        addressLine1: streetAddr,
+        addressLine2: shipping.addressLine2 || '',
+        city: shipping.city || '',
+        state: shipping.state || '',
+        pincode: shipping.pincode || '',
       },
 
       items: order.items ?? [],
@@ -388,49 +400,35 @@ export async function syncOrderToSupabase(
       razorpay_order_id: order.razorpayOrderId ?? null,
 
       tracking_status: order.trackingStatus ?? 'preparing',
-
-      shiprocket_tracking_number:
-        order.shiprocketTrackingNumber ?? null,
-
-      estimated_delivery_date:
-        order.estimatedDeliveryDate ?? null,
-
+      shiprocket_tracking_number: order.shiprocketTrackingNumber ?? null,
+      estimated_delivery_date: order.estimatedDeliveryDate ?? null,
       notes: order.notes ?? null,
 
       created_at: order.createdAt || new Date().toISOString(),
     };
 
-    console.log('[Supabase] Saving order:', orderRow);
+    console.log('[Supabase] Syncing order to database:', order.orderNumber);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('orders')
       .upsert(orderRow, {
         onConflict: 'id',
-      })
-      .select()
-      .single();
+      });
 
     if (error) {
-      console.error('[Supabase] ORDER SAVE FAILED:', error);
-      console.error('[Supabase] Error message:', error.message);
-      console.error('[Supabase] Error details:', error.details);
-      console.error('[Supabase] Error hint:', error.hint);
-      console.error('[Supabase] Error code:', error.code);
-
+      console.error('[Supabase] ORDER SAVE FAILED:', error.message);
       return {
         success: false,
         error: error.message,
       };
     }
 
-    console.log('[Supabase] ORDER SAVED SUCCESSFULLY:', data);
-
+    console.log('[Supabase] ORDER SAVED SUCCESSFULLY:', order.orderNumber);
     return {
       success: true,
     };
   } catch (err: any) {
     console.error('[Supabase] Unexpected order sync error:', err);
-
     return {
       success: false,
       error: err?.message || 'Unknown Supabase order error',

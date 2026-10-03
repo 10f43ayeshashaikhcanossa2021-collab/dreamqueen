@@ -111,13 +111,25 @@ export const CheckoutModal: React.FC = () => {
 
       const isPaid = paymentMethod === 'razorpay' || paymentMethod === 'upi_qr';
 
+      const street = (address.address || address.addressLine1 || '').trim();
       const order = createOrder({
         customer: {
-          name: address.fullName,
-          email: address.email,
-          phone: address.phone
+          name: address.fullName?.trim() || 'Valued Customer',
+          email: address.email?.trim() || '',
+          phone: address.phone?.trim() || ''
         },
-        shippingAddress: address,
+        shippingAddress: {
+          ...address,
+          fullName: address.fullName?.trim() || 'Valued Customer',
+          phone: address.phone?.trim() || '',
+          email: address.email?.trim() || '',
+          address: street,
+          addressLine1: street,
+          addressLine2: address.addressLine2?.trim() || '',
+          city: address.city?.trim() || '',
+          state: address.state?.trim() || '',
+          pincode: address.pincode?.trim() || ''
+        },
         items: cart.map((item) => ({
           productId: item.product.id,
           productName: item.product.name,

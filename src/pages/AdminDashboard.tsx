@@ -39,7 +39,11 @@ import {
   RefreshCw,
   AlertCircle,
   Terminal,
-  CheckSquare
+  CheckSquare,
+  MapPin,
+  Phone,
+  Mail,
+  Filter
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -68,7 +72,9 @@ export const AdminDashboard: React.FC = () => {
     showToast,
     isAdmin,
     setIsAdmin,
-    setActiveTab: setStoreActiveTab
+    setActiveTab: setStoreActiveTab,
+    isSupabaseSyncing,
+    refreshFromSupabase
   } = useStore();
 
   // Admin Passcode Gate State
@@ -89,6 +95,50 @@ export const AdminDashboard: React.FC = () => {
   const [feedbackSearchQuery, setFeedbackSearchQuery] = useState('');
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<'all' | number>('all');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
+
+  // Orders management state
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | OrderTrackingStatus>('all');
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
+
+  const handleCopyShippingLabel = (ord: Order) => {
+    const shipping = ord.shippingAddress;
+    const name = shipping?.fullName || ord.customer?.name || 'Customer';
+    const phone = shipping?.phone || ord.customer?.phone || 'No phone';
+    const street = shipping?.address || [shipping?.addressLine1, shipping?.addressLine2].filter(Boolean).join(', ') || 'No street specified';
+    const city = shipping?.city || '';
+    const state = shipping?.state || '';
+    const pin = shipping?.pincode || '';
+
+    const labelText = `SHIP TO:\nName: ${name}\nPhone: ${phone}\nAddress: ${street}\nCity: ${city}\nState: ${state} - ${pin}\nOrder ID: ${ord.orderNumber}`;
+    navigator.clipboard.writeText(labelText);
+    setCopiedOrderId(ord.id);
+    showToast(`Shipping label for ${name} copied to clipboard!`);
+    setTimeout(() => setCopiedOrderId(null), 3000);
+  };
+
+  const filteredOrders = orders.filter((ord) => {
+    if (orderStatusFilter !== 'all' && ord.trackingStatus !== orderStatusFilter) {
+      return false;
+    }
+    if (!orderSearchQuery.trim()) return true;
+    const q = orderSearchQuery.toLowerCase().trim();
+    const orderNum = (ord.orderNumber || '').toLowerCase();
+    const custName = (ord.customer?.name || ord.shippingAddress?.fullName || '').toLowerCase();
+    const phone = (ord.customer?.phone || ord.shippingAddress?.phone || '').toLowerCase();
+    const street = (ord.shippingAddress?.address || ord.shippingAddress?.addressLine1 || '').toLowerCase();
+    const city = (ord.shippingAddress?.city || '').toLowerCase();
+    const pincode = (ord.shippingAddress?.pincode || '').toLowerCase();
+
+    return (
+      orderNum.includes(q) ||
+      custName.includes(q) ||
+      phone.includes(q) ||
+      street.includes(q) ||
+      city.includes(q) ||
+      pincode.includes(q)
+    );
+  });
 
   // Product Add / Edit Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -433,6 +483,16 @@ export const AdminDashboard: React.FC = () => {
 
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
+            type="button"
+            onClick={() => refreshFromSupabase()}
+            disabled={isSupabaseSyncing}
+            className="px-3.5 py-2 rounded-full border border-[#EAD5C5] bg-[#FFF8F0] hover:bg-[#F3E5D8] text-[#5B3A29] text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Pull latest orders and catalog from database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSupabaseSyncing ? 'animate-spin text-[#708238]' : ''}`} />
+            <span>{isSupabaseSyncing ? 'Syncing...' : 'Sync Database'}</span>
+          </button>
+          <button
             onClick={() => setStoreActiveTab('home')}
             className="px-3.5 py-2 rounded-full border border-[#EAD5C5] bg-white hover:bg-[#FDF9F4] text-[#5B3A29] text-xs font-semibold shadow-xs flex items-center gap-1.5 transition"
             title="Switch to customer storefront"
@@ -611,137 +671,387 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB: ORDERS MANAGEMENT */}
       {activeTab === 'orders' && (
         <div className="py-6 space-y-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#F0DFD1]">
             <div>
-              <h2 className="font-heading text-xl font-bold text-[#5B3A29]">
-                Customer Orders & Shiprocket Fulfillment
-              </h2>
-              <p className="text-xs text-[#6E6863]">
-                Manage fulfillment stages, update Shiprocket tracking numbers, and view customer notes.
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading text-xl font-bold text-[#5B3A29]">
+                  Customer Orders & Fulfillment
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-[#E8F0DC] text-[#4A5D1E] text-xs font-bold border border-[#D5E2C4]">
+                  {orders.length} Total
+                </span>
+              </div>
+              <p className="text-xs text-[#6E6863] mt-1">
+                View customer delivery addresses, contact details, update tracking statuses, and fulfill packages.
               </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => refreshFromSupabase()}
+                disabled={isSupabaseSyncing}
+                className="px-3.5 py-2 rounded-xl bg-[#FFF8F0] hover:bg-[#F3E5D8] text-[#5B3A29] text-xs font-bold border border-[#EAD5C5] flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSupabaseSyncing ? 'animate-spin text-[#708238]' : ''}`} />
+                <span>{isSupabaseSyncing ? 'Syncing Orders...' : 'Sync Orders from Supabase'}</span>
+              </button>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {orders.map((ord) => (
-              <div
-                key={ord.id}
-                className="bg-white rounded-3xl border border-[#EAD5C5] p-5 shadow-xs space-y-4"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#F0DFD1] gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-heading text-lg font-bold text-[#5B3A29]">
-                        {ord.orderNumber}
-                      </span>
-                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#F8D7DA] text-[#842029]">
-                        {ord.paymentMethod.toUpperCase()} ({ord.paymentStatus.toUpperCase()})
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#6E6863]">
-                      Customer: <strong>{ord.customer.name}</strong> • Phone: {ord.customer.phone} • City:{' '}
-                      {ord.shippingAddress.city}
-                    </p>
-                    <div className="mt-2 rounded-lg bg-[#F8F5F1] p-3">
-                      <p className="text-xs font-semibold text-[#4A4541]">
-                         📍 Delivery Address
-                         </p>
+          {/* Search & Status Filters */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-[#8C7A6B] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by Order #, Customer Name, Phone, City, or Pincode..."
+                value={orderSearchQuery}
+                onChange={(e) => setOrderSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 rounded-xl border border-[#EAD5C5] bg-[#FDF9F4] text-xs text-[#2E2E2E] focus:outline-none focus:ring-1 focus:ring-[#5B3A29]"
+              />
+              {orderSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setOrderSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-                       <p className="mt-1 text-sm text-[#6E6863]">
-                          {ord.shippingAddress?.addressLine1}
-                          {ord.shippingAddress?.addressLine2 && (
-                              <>
-                           , {ord.shippingAddress.addressLine2}
-                             </>
-                             )}
-                             {ord.shippingAddress?.city && (
-      <>
-        , {ord.shippingAddress.city}
-      </>
-    )}
-    {ord.shippingAddress?.state && (
-      <>
-        , {ord.shippingAddress.state}
-      </>
-    )}
-    {ord.shippingAddress?.pincode && (
-      <>
-        - {ord.shippingAddress.pincode}
-      </>
-    )}
-  </p>
-</div>
-                  </div>
-
-                  {/* Status Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#8C7A6B]">Status:</span>
-                    <select
-                      value={ord.trackingStatus}
-                      onChange={(e) =>
-                        updateOrderStatus(ord.id, e.target.value as OrderTrackingStatus)
-                      }
-                      className="px-3 py-1.5 text-xs rounded-xl border border-[#EAD5C5] bg-[#FFF8F0] font-bold text-[#5B3A29] focus:outline-none"
+            {/* Status Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'pending', label: 'Pending' },
+                  { id: 'preparing', label: 'Preparing' },
+                  { id: 'packed', label: 'Packed' },
+                  { id: 'shipped', label: 'Shipped' },
+                  { id: 'delivered', label: 'Delivered' },
+                  { id: 'cancelled', label: 'Cancelled' }
+                ] as const
+              ).map((tab) => {
+                const count =
+                  tab.id === 'all'
+                    ? orders.length
+                    : orders.filter((o) => o.trackingStatus === tab.id).length;
+                const isSelected = orderStatusFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setOrderStatusFilter(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-full font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-[#5B3A29] text-white shadow-xs'
+                        : 'bg-[#FFF8F0] text-[#6E6863] hover:bg-[#F3E5D8] border border-[#EAD5C5]'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-[#EAD5C5]/50 text-[#5B3A29]'
+                      }`}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="preparing">Preparing (Crocheting)</option>
-                      <option value="packed">Packed with Love</option>
-                      <option value="shipped">Shipped (Shiprocket)</option>
-                      <option value="out_for_delivery">Out for Delivery</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Items & Financials */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                  <div className="sm:col-span-2 space-y-2">
-                    <span className="font-bold text-[#8C7A6B] block uppercase text-[10px]">
-                      Items in Package:
+                      {count}
                     </span>
-                    {ord.items.map((it, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <img
-                          src={it.image}
-                          alt={it.productName}
-                          className="w-7 h-7 rounded-md object-cover"
-                        />
-                        <span className="text-[#2E2E2E]">
-                          {it.productName} ({it.color.name}) × {it.quantity}
-                        </span>
-                        <span className="text-[#8C7A6B] font-price">₹{it.price * it.quantity}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-[#FFF8F0] p-3 rounded-2xl border border-[#EAD5C5] space-y-1">
-                    <div className="flex justify-between">
-                      <span>Total:</span>
-                      <strong className="font-price text-sm text-[#5B3A29]">₹{ord.total}</strong>
-                    </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span>Shiprocket AWB:</span>
-                      <span className="font-mono text-[#2E2E2E]">
-                        {ord.shiprocketTrackingNumber || 'Pending'}
-                      </span>
-                    </div>
-                    <div className="pt-2">
-                      <a
-                        href={`https://wa.me/${ord.customer.phone.replace(/[^0-9]/g, '')}?text=Hi%20${ord.customer.name},%20DreamQueen%20here!%20Your%20order%20${ord.orderNumber}%20status%20is%20${ord.trackingStatus}.`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#25D366] hover:underline"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>Send WhatsApp Update</span>
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Orders Listing */}
+          {filteredOrders.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-[#EAD5C5] p-10 text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] flex items-center justify-center mx-auto text-[#C88A58]">
+                <Package className="w-8 h-8" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-heading text-lg font-bold text-[#5B3A29]">
+                  {orders.length === 0 ? 'No Orders in Store Yet' : 'No Matching Orders Found'}
+                </h3>
+                <p className="text-xs text-[#6E6863] max-w-md mx-auto">
+                  {orders.length === 0
+                    ? 'When a customer checks out and places an order on your storefront, their full package details and delivery address will appear here instantly.'
+                    : `No orders found matching "${orderSearchQuery || orderStatusFilter}". Try clearing your filters.`}
+                </p>
+              </div>
+              <div className="pt-2 flex justify-center gap-2">
+                {orders.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => refreshFromSupabase()}
+                    disabled={isSupabaseSyncing}
+                    className="px-5 py-2.5 rounded-xl bg-[#5B3A29] text-white text-xs font-bold hover:bg-[#43291B] transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSupabaseSyncing ? 'animate-spin' : ''}`} />
+                    <span>Check Supabase Database Now</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderSearchQuery('');
+                      setOrderStatusFilter('all');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#5B3A29] text-white text-xs font-bold hover:bg-[#43291B] transition cursor-pointer"
+                  >
+                    Clear Search & Filters
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredOrders.map((ord) => {
+                const customerName =
+                  ord.shippingAddress?.fullName || ord.customer?.name || 'Valued Customer';
+                const customerPhone =
+                  ord.shippingAddress?.phone || ord.customer?.phone || '';
+                const customerEmail =
+                  ord.shippingAddress?.email || ord.customer?.email || '';
+                const streetAddress =
+                  ord.shippingAddress?.address ||
+                  [ord.shippingAddress?.addressLine1, ord.shippingAddress?.addressLine2]
+                    .filter(Boolean)
+                    .join(', ') ||
+                  'No street address specified';
+                const city = ord.shippingAddress?.city || '';
+                const state = ord.shippingAddress?.state || '';
+                const pincode = ord.shippingAddress?.pincode || '';
+                const cleanPhone = customerPhone.replace(/[^0-9]/g, '');
+
+                return (
+                  <div
+                    key={ord.id}
+                    className="bg-white rounded-3xl border border-[#EAD5C5] p-5 sm:p-6 shadow-xs space-y-4 hover:border-[#D5C2B1] transition"
+                  >
+                    {/* Order Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#F0DFD1] gap-3">
+                      <div>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="font-heading text-lg font-bold text-[#5B3A29]">
+                            {ord.orderNumber}
+                          </span>
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#F8D7DA] text-[#842029] uppercase border border-[#F1AEB5]">
+                            {ord.paymentMethod?.toUpperCase()} ({ord.paymentStatus?.toUpperCase()})
+                          </span>
+                          <span className="text-[11px] text-[#8C7A6B]">
+                            {ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : 'Recent'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#6E6863] mt-1">
+                          Ordered by <strong className="text-[#2E2E2E]">{customerName}</strong>
+                          {customerPhone && (
+                            <> • Phone: <a href={`tel:${customerPhone}`} className="text-[#5B3A29] font-semibold hover:underline">{customerPhone}</a></>
+                          )}
+                          {city && <> • Destination: <strong>{city}</strong></>}
+                        </p>
+                      </div>
+
+                      {/* Status Dropdown */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <span className="text-xs text-[#8C7A6B] font-semibold">Status:</span>
+                        <select
+                          value={ord.trackingStatus}
+                          onChange={(e) =>
+                            updateOrderStatus(ord.id, e.target.value as OrderTrackingStatus)
+                          }
+                          className="px-3 py-1.5 text-xs rounded-xl border border-[#EAD5C5] bg-[#FFF8F0] font-bold text-[#5B3A29] focus:outline-none focus:ring-1 focus:ring-[#5B3A29] cursor-pointer"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="preparing">Preparing (Crocheting)</option>
+                          <option value="packed">Packed with Love</option>
+                          <option value="shipped">Shipped (Shiprocket)</option>
+                          <option value="out_for_delivery">Out for Delivery</option>
+                          <option value="delivered">Delivered</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Delivery Address Box - High Prominence */}
+                    <div className="rounded-2xl bg-[#FDF9F4] border border-[#EAD5C5] p-4 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-[#F0DFD1]">
+                        <span className="text-xs font-bold text-[#5B3A29] flex items-center gap-1.5">
+                          <MapPin className="w-4 h-4 text-[#C88A58]" />
+                          <span>Delivery Address & Recipient Information</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyShippingLabel(ord)}
+                          className="px-3 py-1 rounded-lg bg-white border border-[#D5E2C4] hover:bg-[#E8F0DC] text-[#4A5D1E] text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                        >
+                          {copiedOrderId === ord.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-green-600" />
+                              <span>Address Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy Shipping Label</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
+                        <div className="space-y-1">
+                          <p className="font-bold text-sm text-[#2E2E2E]">
+                            {customerName}
+                          </p>
+                          <p className="text-[#55504C] leading-relaxed font-medium">
+                            {streetAddress}
+                          </p>
+                          <p className="font-semibold text-[#5B3A29]">
+                            {[city, state].filter(Boolean).join(', ')}{' '}
+                            {pincode && <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-[#EAD5C5] ml-1">PIN: {pincode}</span>}
+                          </p>
+                        </div>
+
+                        <div className="space-y-1 md:border-l md:border-[#F0DFD1] md:pl-4">
+                          <div className="flex items-center gap-1.5 text-[#55504C]">
+                            <Phone className="w-3.5 h-3.5 text-[#8C7A6B] shrink-0" />
+                            <span>Phone:</span>
+                            {customerPhone ? (
+                              <a
+                                href={`tel:${cleanPhone}`}
+                                className="font-mono font-bold text-[#5B3A29] hover:underline"
+                              >
+                                {customerPhone}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">Not provided</span>
+                            )}
+                          </div>
+
+                          {customerEmail && (
+                            <div className="flex items-center gap-1.5 text-[#55504C]">
+                              <Mail className="w-3.5 h-3.5 text-[#8C7A6B] shrink-0" />
+                              <span>Email:</span>
+                              <a
+                                href={`mailto:${customerEmail}`}
+                                className="text-[#5B3A29] hover:underline truncate"
+                              >
+                                {customerEmail}
+                              </a>
+                            </div>
+                          )}
+
+                          {ord.notes && (
+                            <div className="pt-1.5 text-[11px] text-[#8C7A6B] italic">
+                              📝 Notes: "{ord.notes}"
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Items & Financials */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                      <div className="sm:col-span-2 space-y-2">
+                        <span className="font-bold text-[#8C7A6B] block uppercase text-[10px] tracking-wider">
+                          Items in Package ({ord.items.length}):
+                        </span>
+                        <div className="space-y-2">
+                          {ord.items.map((it, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between p-2 rounded-xl bg-[#FFF8F0] border border-[#F0DFD1]"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <img
+                                  src={it.image}
+                                  alt={it.productName}
+                                  className="w-9 h-9 rounded-lg object-cover border border-[#EAD5C5]"
+                                />
+                                <div>
+                                  <p className="font-bold text-[#2E2E2E]">{it.productName}</p>
+                                  <p className="text-[11px] text-[#6E6863]">
+                                    Color: <span className="font-semibold text-[#5B3A29]">{it.color.name}</span> • Qty: {it.quantity}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="font-price font-bold text-sm text-[#5B3A29]">
+                                ₹{it.price * it.quantity}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-[#FFF8F0] p-4 rounded-2xl border border-[#EAD5C5] space-y-2">
+                        <div className="flex justify-between items-center pb-2 border-b border-[#F0DFD1]">
+                          <span className="text-xs text-[#6E6863]">Grand Total:</span>
+                          <strong className="font-price text-base font-bold text-[#5B3A29]">
+                            ₹{ord.total}
+                          </strong>
+                        </div>
+                        <div className="text-[11px] text-[#6E6863] space-y-1">
+                          <div className="flex justify-between">
+                            <span>Subtotal:</span>
+                            <span>₹{ord.subtotal}</span>
+                          </div>
+                          {ord.discount > 0 && (
+                            <div className="flex justify-between text-green-700">
+                              <span>Discount:</span>
+                              <span>-₹{ord.discount}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span>Shipping:</span>
+                            <span>₹{ord.shippingFee}</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-[#F0DFD1] space-y-2">
+                          <div className="text-[11px]">
+                            <span className="text-[#8C7A6B] block">Shiprocket AWB:</span>
+                            <span className="font-mono font-bold text-[#2E2E2E]">
+                              {ord.shiprocketTrackingNumber || 'Pending AWB'}
+                            </span>
+                          </div>
+
+                          {cleanPhone && (
+                            <div className="pt-1 flex flex-col gap-1.5">
+                              <a
+                                href={`https://wa.me/${cleanPhone}?text=Hi%20${encodeURIComponent(customerName)},%20DreamQueen%20here!%20Your%20crochet%20order%20${ord.orderNumber}%20is%20currently%20${ord.trackingStatus.replace('_', ' ')}.`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white text-[11px] font-bold shadow-2xs transition"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                <span>WhatsApp Customer</span>
+                              </a>
+                              <a
+                                href={`tel:${cleanPhone}`}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-[#EAD5C5] hover:bg-[#FDF9F4] text-[#5B3A29] text-[11px] font-semibold transition"
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span>Call Customer</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -23,7 +23,6 @@ import { ShopPage } from './pages/ShopPage';
 import { OrderTrackingPage } from './pages/OrderTrackingPage';
 import { CustomOrderPage } from './pages/CustomOrderPage';
 import { CustomerDashboard } from './pages/CustomerDashboard';
-import { AdminDashboard } from './pages/AdminDashboard';
 import { ContactPage } from './pages/ContactPage';
 
 import { MessageCircle, Heart, ArrowUp } from 'lucide-react';
@@ -59,7 +58,6 @@ const MainLayout: React.FC = () => {
         {activeTab === 'track' && <OrderTrackingPage />}
         {activeTab === 'custom' && <CustomOrderPage />}
         {activeTab === 'customer' && <CustomerDashboard />}
-        {activeTab === 'admin' && <AdminDashboard />}
         {activeTab === 'contact' && <ContactPage />}
       </main>
 

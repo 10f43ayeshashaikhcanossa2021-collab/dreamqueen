@@ -68,7 +68,7 @@ export const FeaturedProducts: React.FC = () => {
       {/* Products Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {filtered.map((product, idx) => (
-          <ProductCard key={product.id} product={product} index={idx} />
+          <ProductCard key={`${product.id}-${idx}`} product={product} index={idx} />
         ))}
       </div>
 

@@ -11,11 +11,11 @@ import {
   ShieldCheck,
   ChevronRight,
   LogOut,
-  SlidersHorizontal,
   Package,
   QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 export const Navbar: React.FC = () => {
   const {
@@ -27,8 +27,6 @@ export const Navbar: React.FC = () => {
     setIsCartOpen,
     setIsUpiScannerOpen,
     currentUser,
-    isAdmin,
-    setIsAdmin,
     loginUser,
     logoutUser,
     openAuthModal,
@@ -187,14 +185,14 @@ export const Navbar: React.FC = () => {
                     {searchQuery.trim() && (
                       <div className="mt-3 max-h-64 overflow-y-auto space-y-1.5 pr-1">
                         {searchResults.length > 0 ? (
-                          searchResults.map((prod) => (
+                          searchResults.map((prod, idx) => (
                             <button
-                              key={prod.id}
+                              key={`${prod.id}-${idx}`}
                               onClick={() => handleProductSelect(prod)}
                               className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-[#FDF9F4] text-left transition group"
                             >
                               <img
-                                src={prod.images[0]}
+                                src={safeImage(prod.images?.[0])}
                                 alt={prod.name}
                                 className="w-10 h-10 rounded-lg object-cover border border-[#EAD5C5]"
                               />
@@ -333,19 +331,6 @@ export const Navbar: React.FC = () => {
                       Track My Order
                     </button>
 
-                    {isAdmin && (
-                      <button
-                        onClick={() => {
-                          setActiveTab('admin');
-                          setIsUserMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#708238] font-semibold hover:bg-[#FDF9F4] rounded-xl transition"
-                      >
-                        <SlidersHorizontal className="w-4 h-4 text-[#708238]" />
-                        Open Admin Portal
-                      </button>
-                    )}
-
                     {currentUser && (
                       <button
                         onClick={() => {
@@ -362,29 +347,6 @@ export const Navbar: React.FC = () => {
                 )}
               </AnimatePresence>
             </div>
-
-            {/* Admin Switch Quick Badge - Only visible if logged in as Admin */}
-            {isAdmin && (
-              <button
-                id="admin-quick-toggle-btn"
-                onClick={() => {
-                  if (activeTab === 'admin') {
-                    setActiveTab('home');
-                  } else {
-                    setActiveTab('admin');
-                  }
-                }}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${
-                  activeTab === 'admin'
-                    ? 'bg-[#708238] text-white border-[#708238]'
-                    : 'bg-[#FFF8F0] text-[#708238] border-[#708238]/40 hover:bg-[#E8F0DC]'
-                }`}
-                title="Admin Workspace"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>{activeTab === 'admin' ? 'Storefront View' : 'Artisan Admin'}</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -405,8 +367,7 @@ export const Navbar: React.FC = () => {
                 { id: 'custom', label: 'Custom Crochet Orders' },
                 { id: 'track', label: 'Track Order' },
                 { id: 'customer', label: 'My Account & Orders' },
-                { id: 'contact', label: 'About & Contact' },
-                ...(isAdmin ? [{ id: 'admin', label: 'Artisan Admin Panel' }] : [])
+                { id: 'contact', label: 'About & Contact' }
               ].map((item) => (
                 <button
                   key={item.id}

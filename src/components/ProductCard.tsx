@@ -3,6 +3,7 @@ import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
 import { Heart, Star, ShoppingBag, Eye } from 'lucide-react';
 import { motion } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 interface ProductCardProps {
   product: Product;
@@ -24,7 +25,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
       {/* Image container */}
       <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[#FFF8F0] mb-3.5">
         <img
-          src={product.images[0]}
+          src={safeImage(product.images?.[0])}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"

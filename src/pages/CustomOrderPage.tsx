@@ -12,6 +12,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 export const CustomOrderPage: React.FC = () => {
   const { submitCustomOrder, currentUser, openAuthModal, showToast } = useStore();
@@ -39,9 +40,9 @@ export const CustomOrderPage: React.FC = () => {
 
   // Sample quick inspiration images
   const sampleInspirations = [
-    'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=600&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=600&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=600&auto=format&fit=crop&q=80'
+    '/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg',
+    '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.38_PM_51e04cb2.jpeg',
+    '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.37_PM__1__b69ab62b.jpeg'
   ];
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,7 +212,7 @@ export const CustomOrderPage: React.FC = () => {
                   />
                 </label>
 
-                {referenceImageUrl && (
+                {Boolean(referenceImageUrl?.trim()) && (
                   <div className="mt-2 flex items-center gap-2">
                     <img
                       src={referenceImageUrl}
@@ -239,7 +240,7 @@ export const CustomOrderPage: React.FC = () => {
                           : 'border-[#EAD5C5] opacity-75'
                       }`}
                     >
-                      <img src={img} alt="sample" className="w-full h-full object-cover" />
+                      <img src={safeImage(img)} alt="sample" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

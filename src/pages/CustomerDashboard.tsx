@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Order, OrderItem } from '../types';
+import { resolveItemImage, safeImage } from '../utils/imageHelper';
 
 export const CustomerDashboard: React.FC = () => {
   const {
@@ -92,16 +93,36 @@ export const CustomerDashboard: React.FC = () => {
 
   const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
 
+  // Filter orders belonging to the logged-in customer
+  const userOrders = orders.filter((o) => {
+    const userEmail = (currentUser?.email || '').trim().toLowerCase();
+    const userPhone = (currentUser?.phone || '').replace(/[^0-9]/g, '');
+    const userName = (currentUser?.name || '').trim().toLowerCase();
+
+    const orderCustEmail = (o.customer?.email || o.shippingAddress?.email || '').trim().toLowerCase();
+    const orderPhone = (o.customer?.phone || o.shippingAddress?.phone || '').replace(/[^0-9]/g, '');
+    const orderName = (o.customer?.name || o.shippingAddress?.fullName || '').trim().toLowerCase();
+
+    if (userEmail && orderCustEmail && userEmail === orderCustEmail) return true;
+    if (userPhone && orderPhone && userPhone.length >= 8 && (orderPhone.includes(userPhone) || userPhone.includes(orderPhone))) return true;
+    if (userName && orderName && (userName === orderName || orderName.includes(userName) || userName.includes(orderName))) return true;
+    return false;
+  });
+
+  const ordersCount = userOrders.length;
+  // VIP Shopper status is strictly unlocked ONLY after 3 or more purchases
+  const isVipShopper = ordersCount >= 3;
+
   // Feedbacks submitted by this user (or on orders owned by this user)
   const userFeedbacks = feedbacks.filter(
     (fb) =>
       fb.customerEmail.toLowerCase() === (currentUser?.email || '').toLowerCase() ||
-      orders.some((o) => o.orderNumber === fb.orderNumber)
+      userOrders.some((o) => o.orderNumber === fb.orderNumber)
   );
 
   // Purchased items awaiting customer review
   const itemsAwaitingFeedback: Array<{ order: Order; item: OrderItem }> = [];
-  orders.forEach((ord) => {
+  userOrders.forEach((ord) => {
     ord.items.forEach((it) => {
       const alreadyReviewed = getFeedbackForOrderItem(ord.orderNumber, it.productId);
       if (!alreadyReviewed) {
@@ -135,15 +156,52 @@ export const CustomerDashboard: React.FC = () => {
                 {currentUser.name}
               </h2>
               <p className="text-xs text-[#8C7A6B]">{currentUser.email}</p>
-              <span className="inline-block mt-2 px-3 py-1 rounded-full text-[10px] font-bold bg-[#E8F0DC] text-[#4A5D1E]">
-                DreamQueen VIP Shopper
-              </span>
+
+              {/* VIP Shopper Badge: Only shown if user has bought 3 or more orders */}
+              {isVipShopper ? (
+                <div className="mt-2.5">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-[#E8F0DC] text-[#4A5D1E] border border-[#C5DCAB] shadow-2xs">
+                    <span className="text-xs">👑</span>
+                    <span>DreamQueen VIP Shopper</span>
+                    <span className="bg-[#4A5D1E] text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold">VIP</span>
+                  </span>
+                  <div className="mt-2 text-[10px] font-semibold text-[#4A5D1E] bg-[#F4F9EC] rounded-xl p-2 border border-[#E0EED0]">
+                    ✨ Active VIP Member ({ordersCount} Orders Placed)
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2.5 space-y-2">
+                  <span className="inline-block px-3 py-1 rounded-full text-[10px] font-semibold bg-[#FFF8F0] border border-[#EAD5C5] text-[#5B3A29]">
+                    {ordersCount === 0
+                      ? 'DreamQueen Member • 0 orders'
+                      : `${ordersCount} Order${ordersCount === 1 ? '' : 's'} Placed • ${3 - ordersCount} more to VIP 👑`}
+                  </span>
+                  <div className="p-2.5 rounded-xl bg-[#FDF9F4] border border-[#EAD5C5] text-left">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-[#5B3A29] mb-1">
+                      <span className="flex items-center gap-1">
+                        <span>👑</span>
+                        <span>VIP Status Progress</span>
+                      </span>
+                      <span>{ordersCount}/3 Orders</span>
+                    </div>
+                    <div className="w-full bg-[#EAD5C5]/40 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-[#708238] h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, (ordersCount / 3) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-[#8C7A6B] mt-1 leading-snug">
+                      Place 3 or more orders to earn the official DreamQueen VIP Shopper badge and unlock exclusive member gifts!
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Sidebar Tabs */}
             <nav className="space-y-1.5">
               {[
-                { id: 'orders', label: 'My Orders', icon: Package, count: orders.length },
+                { id: 'orders', label: 'My Orders', icon: Package, count: userOrders.length },
                 {
                   id: 'feedback',
                   label: 'Item Reviews & Feedback',
@@ -216,7 +274,7 @@ export const CustomerDashboard: React.FC = () => {
                 </button>
               </div>
 
-              {orders.length === 0 ? (
+              {userOrders.length === 0 ? (
                 <div className="bg-white rounded-3xl border border-[#EAD5C5] p-12 text-center space-y-3">
                   <p className="text-3xl">📦</p>
                   <p className="font-heading text-base font-bold text-[#5B3A29]">No orders yet</p>
@@ -224,7 +282,7 @@ export const CustomerDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {orders.map((ord) => (
+                  {userOrders.map((ord) => (
                     <div
                       key={ord.id}
                       className="bg-white rounded-3xl border border-[#EAD5C5] p-5 sm:p-6 shadow-xs space-y-4"
@@ -281,7 +339,7 @@ export const CustomerDashboard: React.FC = () => {
                             >
                               <div className="flex items-center gap-3">
                                 <img
-                                  src={it.image}
+                                  src={resolveItemImage(it.productId, it.image)}
                                   alt={it.productName}
                                   className="w-12 h-12 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
                                 />
@@ -409,7 +467,7 @@ export const CustomerDashboard: React.FC = () => {
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <img
-                            src={it.image}
+                            src={resolveItemImage(it.productId, it.image)}
                             alt={it.productName}
                             className="w-12 h-12 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
                           />
@@ -478,7 +536,7 @@ export const CustomerDashboard: React.FC = () => {
                           {/* Top Row */}
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F0DFD1]">
                             <div className="flex items-center gap-3.5">
-                              {fb.productImage && (
+                              {Boolean(fb.productImage?.trim()) && (
                                 <img
                                   src={fb.productImage}
                                   alt={fb.productName}
@@ -562,7 +620,7 @@ export const CustomerDashboard: React.FC = () => {
                               </div>
                             )}
 
-                            {fb.photoUrl && (
+                            {Boolean(fb.photoUrl?.trim()) && (
                               <div className="pt-1">
                                 <span className="text-[11px] font-bold text-[#8C7A6B] block mb-1.5">
                                   Customer Shared Photo:
@@ -627,14 +685,14 @@ export const CustomerDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {wishlistedProducts.map((prod) => (
+                  {wishlistedProducts.map((prod, idx) => (
                     <div
-                      key={prod.id}
+                      key={`${prod.id}-${idx}`}
                       className="bg-white rounded-2xl border border-[#EAD5C5] p-3 shadow-xs space-y-2 flex flex-col justify-between"
                     >
                       <div className="aspect-square rounded-xl overflow-hidden bg-[#FFF8F0]">
                         <img
-                          src={prod.images[0]}
+                          src={safeImage(prod.images?.[0])}
                           alt={prod.name}
                           className="w-full h-full object-cover"
                         />
@@ -726,7 +784,7 @@ export const CustomerDashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F0DFD1]">
-                    {orders.map((ord) => (
+                    {userOrders.map((ord) => (
                       <tr key={ord.id} className="hover:bg-[#FDF9F4]">
                         <td className="p-4 font-mono text-[11px] text-[#2E2E2E]">
                           {ord.razorpayPaymentId || 'COD_RECORD'}

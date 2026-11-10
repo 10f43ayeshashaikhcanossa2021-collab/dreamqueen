@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { resolveItemImage } from '../utils/imageHelper';
 
 const TRACKING_STEPS: Array<{ key: OrderTrackingStatus; label: string; desc: string }> = [
   { key: 'pending', label: 'Order Placed', desc: 'Payment verified & order queued' },
@@ -258,7 +259,7 @@ export const OrderTrackingPage: React.FC = () => {
                 >
                   <div className="flex items-center gap-3">
                     <img
-                      src={it.image}
+                      src={resolveItemImage(it.productId, it.image)}
                       alt={it.productName}
                       className="w-12 h-12 rounded-lg object-cover border border-[#EAD5C5]"
                     />

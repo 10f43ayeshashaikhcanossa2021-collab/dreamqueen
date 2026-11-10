@@ -17,6 +17,7 @@ import {
   INITIAL_ORDERS,
   INITIAL_FEEDBACKS
 } from '../data/initialProducts';
+import { resolveItemImage } from '../utils/imageHelper';
 import {
   syncOrderToSupabase,
   syncCustomOrderToSupabase,
@@ -25,6 +26,7 @@ import {
   fetchOrdersFromSupabase,
   fetchCustomOrdersFromSupabase,
   fetchFeedbacksFromSupabase,
+  fetchStoreSettingsFromSupabase,
   syncProductToSupabase,
   deleteProductFromSupabase,
   updateOrderStatusInSupabase,
@@ -91,8 +93,6 @@ interface StoreContextType {
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
 
   currentUser: User | null;
-  isAdmin: boolean;
-  setIsAdmin: (val: boolean) => void;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (val: boolean) => void;
   authModalIntent: 'checkout' | 'general' | 'custom_order';
@@ -103,8 +103,8 @@ interface StoreContextType {
   logoutUser: () => void;
   updateUserProfile: (name: string, phone: string) => void;
 
-  activeTab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'admin' | 'contact';
-  setActiveTab: (tab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'admin' | 'contact') => void;
+  activeTab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact';
+  setActiveTab: (tab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact') => void;
 
   selectedProduct: Product | null;
   setSelectedProduct: (product: Product | null) => void;
@@ -135,9 +135,9 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const DEFAULT_SETTINGS: StoreSettings = {
   codEnabled: true,
-  codFee: 29,
+  codFee: 10,
   freeShippingThreshold: 499,
-  standardShippingFee: 40,
+  standardShippingFee: 20,
   shiprocketApiKey: 'sr_live_demo_984180410',
   supportPhone: '8097706536',
   supportEmail: 'dreamqueen29@gmail.com',
@@ -170,17 +170,18 @@ const DEFAULT_USER: User = {
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('dreamqueen_products_v4');
-      if (saved) return JSON.parse(saved);
-      const prevSaved = localStorage.getItem('dreamqueen_products');
-      if (prevSaved) {
-        const parsed: Product[] = JSON.parse(prevSaved);
-        const existingIds = new Set(parsed.map((p) => p.id));
-        const newProducts = INITIAL_PRODUCTS.filter((p) => !existingIds.has(p.id));
-        const merged = [...newProducts, ...parsed];
-        localStorage.setItem('dreamqueen_products_v4', JSON.stringify(merged));
-        return merged;
+      const saved = localStorage.getItem('dreamqueen_products_v6');
+      if (saved) {
+        const parsed: Product[] = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === INITIAL_PRODUCTS.length &&
+          parsed.every((p) => p.images?.[0]?.startsWith('/assets/aistudio/'))
+        ) {
+          return parsed;
+        }
       }
+      localStorage.setItem('dreamqueen_products_v6', JSON.stringify(INITIAL_PRODUCTS));
       return INITIAL_PRODUCTS;
     } catch {
       return INITIAL_PRODUCTS;
@@ -190,7 +191,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem('dreamqueen_cart');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed: CartItem[] = JSON.parse(saved);
+        const validIds = new Set(INITIAL_PRODUCTS.map((p) => p.id));
+        return (Array.isArray(parsed) ? parsed : []).filter((item) =>
+          validIds.has(item.product?.id)
+        );
+      }
+      return [];
     } catch {
       return [];
     }
@@ -199,16 +207,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [wishlist, setWishlist] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('dreamqueen_wishlist');
-      return saved ? JSON.parse(saved) : ['prod-rose-hair-tie', 'prod-sunflower-keychain'];
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const validIds = new Set(INITIAL_PRODUCTS.map((p) => p.id));
+        const filtered = (Array.isArray(parsed) ? parsed : []).filter((id) => validIds.has(id));
+        if (filtered.length > 0) return filtered;
+      }
+      return ['prod-heart-hair-clips', 'prod-rose-crochet-bag'];
     } catch {
-      return ['prod-rose-hair-tie', 'prod-sunflower-keychain'];
+      return ['prod-heart-hair-clips', 'prod-rose-crochet-bag'];
     }
   });
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem('dreamqueen_orders');
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+      const list: Order[] = saved ? JSON.parse(saved) : INITIAL_ORDERS;
+      return (Array.isArray(list) ? list : INITIAL_ORDERS).map((ord) => ({
+        ...ord,
+        items: (ord.items || []).map((it) => ({
+          ...it,
+          image: resolveItemImage(it.productId, it.image)
+        }))
+      }));
     } catch {
       return INITIAL_ORDERS;
     }
@@ -256,6 +277,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,
+          standardShippingFee:
+            parsed.standardShippingFee === 40 || parsed.standardShippingFee === undefined
+              ? 20
+              : parsed.standardShippingFee,
+          codFee:
+            parsed.codFee === 29 || parsed.codFee === undefined
+              ? 10
+              : parsed.codFee,
           supportPhone: '8097706536',
           supportEmail: 'dreamqueen29@gmail.com',
           upiId: '8097706536@postbank',
@@ -290,14 +319,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAuthModalIntent(intent);
     setIsAuthModalOpen(true);
   };
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('dreamqueen_is_admin') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [activeTab, setActiveTab] = useState<'home' | 'shop' | 'custom' | 'track' | 'customer' | 'admin' | 'contact'>('home');
+
+  const [activeTab, setActiveTab] = useState<'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact'>('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -315,11 +338,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const liveProducts = await fetchProductsFromSupabase();
         if (liveProducts && liveProducts.length > 0) {
-          setProducts(liveProducts);
-          try {
-            localStorage.setItem('dreamqueen_products_v4', JSON.stringify(liveProducts));
-            localStorage.setItem('dreamqueen_products', JSON.stringify(liveProducts));
-          } catch {}
+          const validLive = liveProducts.filter((p) => p.images?.[0]?.startsWith('/assets/aistudio/'));
+          if (validLive.length > 0) {
+            setProducts(validLive);
+            try {
+              localStorage.setItem('dreamqueen_products_v6', JSON.stringify(validLive));
+            } catch {}
+          }
         }
       } catch (pErr) {
         console.warn('[Supabase] Products sync notice:', pErr);
@@ -334,7 +359,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const remoteNumMap = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
             const merged = [...remoteOrders];
             for (const ord of prev) {
-              if (!remoteMap.has(ord.id) && !remoteNumMap.has(ord.orderNumber.toUpperCase())) {
+              if (
+                !remoteMap.has(ord.id) &&
+                !remoteNumMap.has(ord.orderNumber.toUpperCase()) &&
+                !ord.id.startsWith('ord-demo-')
+              ) {
                 merged.push(ord);
               }
             }
@@ -363,6 +392,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } catch (fErr) {
         console.warn('[Supabase] Feedbacks sync notice:', fErr);
+      }
+
+      // 5. Sync store settings from Supabase
+      try {
+        const liveSettings = await fetchStoreSettingsFromSupabase();
+        if (liveSettings) {
+          setStoreSettings((prev) => ({
+            ...prev,
+            ...liveSettings,
+            standardShippingFee: liveSettings.standardShippingFee ?? 20,
+            codFee: liveSettings.codFee ?? 10
+          }));
+        }
+      } catch (sErr) {
+        console.warn('[Supabase] Store settings sync notice:', sErr);
       }
     } finally {
       setIsSupabaseSyncing(false);
@@ -496,18 +540,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [currentUser]);
 
-  // Sync admin state
-  useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_is_admin', isAdmin ? 'true' : 'false');
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
-  }, [isAdmin]);
+
 
   // Sync to localStorage
   useEffect(() => {
     try {
+      localStorage.setItem('dreamqueen_products_v6', JSON.stringify(products));
+      localStorage.setItem('dreamqueen_products_v5', JSON.stringify(products));
       localStorage.setItem('dreamqueen_products_v4', JSON.stringify(products));
       localStorage.setItem('dreamqueen_products', JSON.stringify(products));
     } catch (e) {
@@ -701,7 +740,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...orderData,
       id: `ord-${Date.now()}`,
       orderNumber,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      items: (orderData.items || []).map((it) => ({
+        ...it,
+        image: resolveItemImage(it.productId, it.image)
+      }))
     };
 
     setOrders((prev) => [newOrder, ...prev]);
@@ -1130,8 +1173,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         storeSettings,
         updateStoreSettings,
         currentUser,
-        isAdmin,
-        setIsAdmin,
         isAuthModalOpen,
         setIsAuthModalOpen,
         authModalIntent,

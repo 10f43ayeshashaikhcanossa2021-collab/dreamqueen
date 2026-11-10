@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../context/StoreContext';
 import { ProductCategory } from '../types';
 import { motion } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 interface CategoryItem {
   id: ProductCategory;
@@ -13,44 +14,44 @@ interface CategoryItem {
 
 const CATEGORIES: CategoryItem[] = [
   {
-    id: 'Hair Accessories',
-    name: 'Hair Accessories',
-    image: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=500&auto=format&fit=crop&q=80',
-    count: 'Clips & Scrunchies',
-    accent: '#F8D7DA'
-  },
-  {
     id: 'Keychains',
-    name: 'Keychains',
-    image: 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=500&auto=format&fit=crop&q=80',
-    count: 'Sunflowers & Charms',
+    name: 'Keychains & Charms',
+    image: '/assets/aistudio/cherry_keychain_____________dm_to_order_on_8097706536_cad75670.jpg',
+    count: 'Cherries, Bows & Sunflowers',
     accent: '#FFF3A8'
   },
   {
-    id: 'Bookmarks',
-    name: 'Bookmarks',
-    image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80',
-    count: 'Sprouts & Daisies',
-    accent: '#D1E7DD'
+    id: 'Hair Accessories',
+    name: 'Hair Accessories',
+    image: '/assets/aistudio/hair_clip_____47816559.jpg',
+    count: 'Heart Clips & Bhandhana',
+    accent: '#F8D7DA'
   },
   {
-    id: 'Flowers',
-    name: 'Flowers',
-    image: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=500&auto=format&fit=crop&q=80',
-    count: 'Everlasting Bouquets',
+    id: 'Bags & Pouches',
+    name: 'Bags & Pouches',
+    image: '/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg',
+    count: 'Rose Bags with Pearls',
+    accent: '#FFE6CC'
+  },
+  {
+    id: 'Accessories',
+    name: 'Phone & Tech Cases',
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.38_PM_51e04cb2.jpeg',
+    count: 'Plush Bow Covers',
     accent: '#E2D9F3'
   },
   {
     id: 'Gifts',
-    name: 'Gifts & Pouches',
-    image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=500&auto=format&fit=crop&q=80',
-    count: 'Mug Rugs & Bags',
-    accent: '#FFE6CC'
+    name: 'Talisman & Gifts',
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.36_PM_8d16b57e.jpeg',
+    count: 'Evil Eye & Tassels',
+    accent: '#D1E7DD'
   },
   {
     id: 'Custom Orders',
-    name: 'Custom Orders',
-    image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=500&auto=format&fit=crop&q=80',
+    name: 'Custom Crochet',
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.34_PM__1__056e15ac.jpeg',
     count: 'Bespoke Creations',
     accent: '#FCECEE'
   }
@@ -96,7 +97,7 @@ export const CategoryList: React.FC = () => {
               <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1.5 border-2 border-[#EAD5C5] group-hover:border-[#5B3A29] group-hover:scale-105 transition-all duration-300 shadow-sm group-hover:shadow-md bg-white">
                 <div className="w-full h-full rounded-full overflow-hidden relative">
                   <img
-                    src={cat.image}
+                    src={safeImage(cat.image)}
                     alt={cat.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />

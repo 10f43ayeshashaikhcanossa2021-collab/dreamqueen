@@ -228,19 +228,6 @@ export const Footer: React.FC = () => {
                   FAQ & Support
                 </button>
               </li>
-              <li className="pt-1">
-                <button
-                  onClick={() => {
-                    setActiveTab('admin');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="text-[11px] text-[#8C7A6B] hover:text-[#5B3A29] flex items-center gap-1.5 transition"
-                  title="Artisan & Administrator login"
-                >
-                  <Lock className="w-3 h-3 text-[#708238]" />
-                  <span>Artisan Portal (Admin)</span>
-                </button>
-              </li>
             </ul>
           </div>
 

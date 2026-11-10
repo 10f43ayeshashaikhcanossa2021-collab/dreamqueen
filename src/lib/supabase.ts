@@ -8,6 +8,7 @@ import {
   StoreSettings,
   OrderTrackingStatus
 } from '../types';
+import { resolveItemImage } from '../utils/imageHelper';
 
 // Supabase configuration provided by the user
 const env = (import.meta as any)?.env || {};
@@ -54,7 +55,7 @@ export function productFromSupabaseRow(row: any): Product {
     }
   }
   if (!Array.isArray(images) || images.length === 0) {
-    images = ['https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=600&auto=format&fit=crop&q=80'];
+    images = ['/assets/aistudio/hair_clip_____47816559.jpg'];
   }
 
   let tags = row.tags;
@@ -253,9 +254,14 @@ export function orderFromSupabaseRow(row: any): Order {
     }
   }
 
-  const street = shippingAddress?.address || shippingAddress?.addressLine1 || '';
+  const street =
+    shippingAddress?.address ||
+    shippingAddress?.addressLine1 ||
+    shippingAddress?.street ||
+    (typeof shippingAddress === 'string' ? shippingAddress : '');
+
   const normalizedAddress = {
-    fullName: shippingAddress?.fullName || customer?.name || 'Customer',
+    fullName: shippingAddress?.fullName || customer?.name || 'Valued Customer',
     phone: shippingAddress?.phone || customer?.phone || '',
     email: shippingAddress?.email || customer?.email || '',
     address: street,
@@ -267,25 +273,34 @@ export function orderFromSupabaseRow(row: any): Order {
   };
 
   const normalizedCustomer = {
-    name: customer?.name || shippingAddress?.fullName || 'Customer',
+    name: customer?.name || shippingAddress?.fullName || 'Valued Customer',
     email: customer?.email || shippingAddress?.email || '',
     phone: customer?.phone || shippingAddress?.phone || '',
   };
+
+  const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => ({
+    productId: it.productId || '',
+    productName: it.productName || 'Handcrafted Crochet Creation',
+    image: resolveItemImage(it.productId, it.image),
+    price: Number(it.price || 0),
+    quantity: Number(it.quantity || 1),
+    color: it.color || { name: 'Original', hex: '#5B3A29' }
+  }));
 
   return {
     id: String(row.id),
     orderNumber: row.order_number || '',
     customer: normalizedCustomer,
     shippingAddress: normalizedAddress,
-    items: Array.isArray(items) ? items : [],
+    items: normalizedItems,
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
     couponCode: row.coupon_code || undefined,
     shippingFee: Number(row.shipping_fee || 0),
     codFee: Number(row.cod_fee || 0),
     total: Number(row.total || 0),
-    paymentMethod: row.payment_method,
-    paymentStatus: row.payment_status,
+    paymentMethod: row.payment_method || 'cod',
+    paymentStatus: row.payment_status || 'pending',
     razorpayPaymentId: row.razorpay_payment_id || undefined,
     razorpayOrderId: row.razorpay_order_id || undefined,
     trackingStatus: row.tracking_status || 'preparing',
@@ -297,14 +312,26 @@ export function orderFromSupabaseRow(row: any): Order {
 }
 
 export async function fetchOrdersFromSupabase(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*');
-  if (error) throw error;
-  const orders = (data || []).map(orderFromSupabaseRow);
-  return orders.sort((a, b) => {
-    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-  });
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*');
+    if (error) throw error;
+    const orders = (data || []).map(orderFromSupabaseRow);
+    return orders.sort((a, b) => {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  } catch (err: any) {
+    console.warn('[Supabase] Full select error on orders, falling back to core columns:', err?.message);
+    const { data: fallbackData, error: fallbackErr } = await supabase
+      .from('orders')
+      .select('id, order_number, customer, shipping_address, subtotal, discount, coupon_code, shipping_fee, cod_fee, total, payment_method, payment_status, razorpay_payment_id, razorpay_order_id, tracking_status, shiprocket_tracking_number, estimated_delivery_date, notes, created_at');
+    if (fallbackErr) throw fallbackErr;
+    const orders = (fallbackData || []).map(orderFromSupabaseRow);
+    return orders.sort((a, b) => {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  }
 }
 
 export async function fetchCustomOrdersFromSupabase(): Promise<CustomOrderRequest[]> {
@@ -384,7 +411,17 @@ export async function syncOrderToSupabase(
         pincode: shipping.pincode || '',
       },
 
-      items: order.items ?? [],
+      items: (order.items ?? []).map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        // Prevent huge base64 strings from causing PostgreSQL jsonb query timeouts by resolving to standard catalog image
+        image: it.image && it.image.startsWith('data:')
+          ? resolveItemImage(it.productId)
+          : resolveItemImage(it.productId, it.image),
+        price: Number(it.price || 0),
+        quantity: Number(it.quantity || 1),
+        color: it.color
+      })),
 
       subtotal: Number(order.subtotal ?? 0),
       discount: Number(order.discount ?? 0),

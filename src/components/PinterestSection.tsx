@@ -1,48 +1,49 @@
 import React from 'react';
 import { Pin, Heart, ExternalLink } from 'lucide-react';
+import { safeImage } from '../utils/imageHelper';
 
 const PINTEREST_PINS = [
   {
     id: 1,
-    image: 'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=600&auto=format&fit=crop&q=80',
-    saves: '1.2k',
-    tag: '#crochetrose',
-    title: 'Everlasting Red Rose'
+    image: '/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg',
+    saves: '2.4k',
+    tag: '#crochetrosebag',
+    title: 'Blooming Rose Bag with Pearl Strap'
   },
   {
     id: 2,
-    image: 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=600&auto=format&fit=crop&q=80',
-    saves: '840',
-    tag: '#sunflowervibes',
-    title: 'Warm Sunshine Bloom'
+    image: '/assets/aistudio/cherry_keychain_____________dm_to_order_on_8097706536_cad75670.jpg',
+    saves: '1.8k',
+    tag: '#cherrykeychain',
+    title: 'Plump Twin Cherry Charm'
   },
   {
     id: 3,
-    image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80',
-    saves: '2.1k',
-    tag: '#crochetbookmark',
-    title: 'Daisy Sprout Bookmark'
+    image: '/assets/aistudio/hair_clip_____47816559.jpg',
+    saves: '3.1k',
+    tag: '#hearthairclips',
+    title: 'Crochet Heart Clips ₹20'
   },
   {
     id: 4,
-    image: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=600&auto=format&fit=crop&q=80',
-    saves: '3.4k',
-    tag: '#everlastingbouquet',
-    title: 'Pastel Garden Bouquet'
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.38_PM_51e04cb2.jpeg',
+    saves: '2.9k',
+    tag: '#crochetphonecase',
+    title: 'Statement Bow Phone Cover'
   },
   {
     id: 5,
-    image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=600&auto=format&fit=crop&q=80',
-    saves: '950',
-    tag: '#strawberrypouch',
-    title: 'Sweet Berry Drawstring'
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.37_PM__1__b69ab62b.jpeg',
+    saves: '1.9k',
+    tag: '#crochetbhandhana',
+    title: 'Traditional Cute Bhandhana'
   },
   {
     id: 6,
-    image: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=600&auto=format&fit=crop&q=80',
-    saves: '1.5k',
-    tag: '#daisyclips',
-    title: 'Blooming Hair Clips'
+    image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.36_PM_8d16b57e.jpeg',
+    saves: '2.2k',
+    tag: '#evileyetalisman',
+    title: 'Evil Eye Bag Charm & Tassel'
   }
 ];
 
@@ -87,7 +88,7 @@ export const PinterestSection: React.FC = () => {
             className="group relative aspect-square rounded-2xl overflow-hidden bg-white border border-[#EAD5C5] shadow-xs cursor-pointer block"
           >
             <img
-              src={pin.image}
+              src={safeImage(pin.image)}
               alt={pin.title}
               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               loading="lazy"

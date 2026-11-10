@@ -14,7 +14,7 @@ export const ShopPage: React.FC = () => {
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  const categories = ['All', 'Hair Accessories', 'Keychains', 'Bookmarks', 'Flowers', 'Gifts', 'Custom Orders'];
+  const categories = ['All', 'Keychains', 'Hair Accessories', 'Bags & Pouches', 'Accessories'];
 
   const filteredProducts = useMemo(() => {
     return products
@@ -179,7 +179,7 @@ export const ShopPage: React.FC = () => {
       {filteredProducts.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {filteredProducts.map((prod, idx) => (
-            <ProductCard key={prod.id} product={prod} index={idx} />
+            <ProductCard key={`${prod.id}-${idx}`} product={prod} index={idx} />
           ))}
         </div>
       ) : (

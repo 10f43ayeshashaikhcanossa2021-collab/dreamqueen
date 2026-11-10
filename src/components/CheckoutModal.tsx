@@ -14,11 +14,19 @@ import {
   Smartphone,
   Building,
   Check,
-  QrCode
+  QrCode,
+  MessageCircle,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { UpiQrCard } from './UpiQrCard';
+import { resolveItemImage, safeImage } from '../utils/imageHelper';
+import {
+  getWhatsAppOrderUrl,
+  DISPLAY_WHATSAPP_NUMBER,
+  ARTISAN_WHATSAPP_NUMBER
+} from '../utils/whatsappHelper';
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -37,6 +45,8 @@ export const CheckoutModal: React.FC = () => {
 
   const [step, setStep] = useState<1 | 2 | 3 | 'success'>(1);
   const [createdOrderNumber, setCreatedOrderNumber] = useState<string>('');
+  const [createdWhatsAppUrl, setCreatedWhatsAppUrl] = useState<string>('');
+  const [orderNotes, setOrderNotes] = useState<string>('');
 
   // Step 1: Address Form
   const [address, setAddress] = useState<ShippingAddress>({
@@ -65,7 +75,7 @@ export const CheckoutModal: React.FC = () => {
   }, [currentUser, isCheckoutOpen]);
 
   // Step 2: Payment
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi_qr');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod');
   const [upiTransactionRef, setUpiTransactionRef] = useState('');
   const [razorpaySubMethod, setRazorpaySubMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
   const [upiApp, setUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'other'>('gpay');
@@ -79,7 +89,6 @@ export const CheckoutModal: React.FC = () => {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   if (!isCheckoutOpen) return null;
-  if (!currentUser) return null;
 
   // Calculation
   const isFreeShipping = cartSubtotal >= storeSettings.freeShippingThreshold;
@@ -114,15 +123,15 @@ export const CheckoutModal: React.FC = () => {
       const street = (address.address || address.addressLine1 || '').trim();
       const order = createOrder({
         customer: {
-          name: address.fullName?.trim() || 'Valued Customer',
-          email: address.email?.trim() || '',
-          phone: address.phone?.trim() || ''
+          name: address.fullName?.trim() || currentUser?.name || 'Valued Customer',
+          email: address.email?.trim() || currentUser?.email || 'dreamqueen29@gmail.com',
+          phone: address.phone?.trim() || currentUser?.phone || '8097706536'
         },
         shippingAddress: {
           ...address,
-          fullName: address.fullName?.trim() || 'Valued Customer',
-          phone: address.phone?.trim() || '',
-          email: address.email?.trim() || '',
+          fullName: address.fullName?.trim() || currentUser?.name || 'Valued Customer',
+          phone: address.phone?.trim() || currentUser?.phone || '8097706536',
+          email: address.email?.trim() || currentUser?.email || '',
           address: street,
           addressLine1: street,
           addressLine2: address.addressLine2?.trim() || '',
@@ -133,7 +142,10 @@ export const CheckoutModal: React.FC = () => {
         items: cart.map((item) => ({
           productId: item.product.id,
           productName: item.product.name,
-          image: item.product.images[0],
+          image: resolveItemImage(
+            item.product.id,
+            item.product.images?.[0]?.startsWith('data:') ? undefined : item.product.images?.[0]
+          ),
           price: item.product.price,
           quantity: item.quantity,
           color: item.selectedColor
@@ -155,10 +167,32 @@ export const CheckoutModal: React.FC = () => {
           'en-IN',
           { day: 'numeric', month: 'short', year: 'numeric' }
         ),
-        notes: 'Handcrafted with extra love by DreamQueen studio.'
+        notes: orderNotes.trim() || 'Direct WhatsApp Order sent to artisan 8097706536'
+      });
+
+      const waUrl = getWhatsAppOrderUrl({
+        orderNumber: order.orderNumber,
+        items: order.items.map((it) => ({
+          name: it.productName,
+          quantity: it.quantity,
+          price: it.price,
+          colorName: it.color?.name
+        })),
+        subtotal: cartSubtotal,
+        discount: discountAmount,
+        couponCode: activeCoupon?.code,
+        shippingFee,
+        codFee,
+        total: finalTotal,
+        paymentMethod,
+        customerName: order.customer.name,
+        phone: order.customer.phone,
+        address: order.shippingAddress,
+        notes: order.notes
       });
 
       setCreatedOrderNumber(order.orderNumber);
+      setCreatedWhatsAppUrl(waUrl);
       setStep('success');
 
       // Trigger celebratory confetti
@@ -172,8 +206,15 @@ export const CheckoutModal: React.FC = () => {
         // fallback
       }
 
-      showToast(`Order ${order.orderNumber} confirmed! Notification sent via WhatsApp & Email ✨`);
-    }, 1200);
+      // Automatically launch WhatsApp with full prefilled order message
+      try {
+        window.open(waUrl, '_blank');
+      } catch (e) {
+        console.warn('Popup blocked, link available in button', e);
+      }
+
+      showToast(`Order ${order.orderNumber} placed! Sending directly to WhatsApp 8097706536 ✨`);
+    }, 600);
   };
 
   return (
@@ -187,15 +228,20 @@ export const CheckoutModal: React.FC = () => {
         {/* Header */}
         <div className="p-5 sm:p-6 bg-[#FFF8F0] border-b border-[#EAD5C5] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-[#F8D7DA] flex items-center justify-center text-lg">
-              🌸
+            <div className="w-10 h-10 rounded-full bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-center text-[#25D366]">
+              <MessageCircle className="w-5 h-5 fill-[#25D366]" />
             </div>
             <div>
-              <h2 className="font-heading text-xl font-bold text-[#5B3A29]">
-                DreamQueen Checkout
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading text-xl font-bold text-[#5B3A29]">
+                  WhatsApp Checkout
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-[#25D366]/15 text-[#1E7E34] text-[10px] font-bold">
+                  Direct to +91 8097706536
+                </span>
+              </div>
               <span className="text-xs text-[#708238] font-medium">
-                100% Secure • Delivered in 7 Days
+                Standard 7-Day Express Delivery Across India
               </span>
             </div>
           </div>
@@ -226,7 +272,7 @@ export const CheckoutModal: React.FC = () => {
               >
                 1
               </span>
-              <span>Shipping Address</span>
+              <span>Delivery Address</span>
             </div>
 
             <span className="text-gray-300">———</span>
@@ -246,7 +292,7 @@ export const CheckoutModal: React.FC = () => {
               >
                 2
               </span>
-              <span>Payment (Razorpay / COD)</span>
+              <span>Payment Mode</span>
             </div>
 
             <span className="text-gray-300">———</span>
@@ -261,12 +307,12 @@ export const CheckoutModal: React.FC = () => {
             >
               <span
                 className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                  step === 3 ? 'bg-[#5B3A29] text-white' : 'bg-gray-200 text-gray-500'
+                  step === 3 ? 'bg-[#25D366] text-white' : 'bg-gray-200 text-gray-500'
                 }`}
               >
                 3
               </span>
-              <span>Order Summary</span>
+              <span>Send to WhatsApp</span>
             </div>
           </div>
         )}
@@ -375,6 +421,20 @@ export const CheckoutModal: React.FC = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Optional Order Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-[#55504C] mb-1">
+                  Order Notes / Custom Crochet Request (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Please pack carefully as a birthday gift / Preferred flower colors..."
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#EAD5C5] bg-white text-xs focus:outline-none focus:ring-1 focus:ring-[#5B3A29] resize-none"
+                />
               </div>
 
               <div className="pt-4 flex justify-end">
@@ -705,7 +765,7 @@ export const CheckoutModal: React.FC = () => {
                       className="flex items-center gap-3 p-2 rounded-xl bg-white border border-[#EAD5C5]"
                     >
                       <img
-                        src={item.product.images[0]}
+                        src={safeImage(item.product.images?.[0])}
                         alt={item.product.name}
                         className="w-10 h-10 rounded-lg object-cover"
                       />
@@ -753,8 +813,23 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
+              {/* WhatsApp Notice Banner */}
+              <div className="p-3.5 rounded-2xl bg-[#E8F5E9] border border-[#C8E6C9] flex items-start gap-3 text-xs">
+                <div className="w-7 h-7 rounded-full bg-[#25D366] text-white flex items-center justify-center shrink-0 mt-0.5">
+                  <MessageCircle className="w-4 h-4 fill-white" />
+                </div>
+                <div>
+                  <strong className="text-[#1E7E34] block font-semibold">
+                    Direct Order to WhatsApp 8097706536
+                  </strong>
+                  <p className="text-[#2E7D32] mt-0.5 leading-relaxed">
+                    Clicking below creates your order receipt and instantly opens WhatsApp with all your items, colors, and address prefilled to <strong>+91 8097706536</strong> for immediate confirmation by our artisan!
+                  </p>
+                </div>
+              </div>
+
               {/* Place Order Button */}
-              <div className="pt-2 flex items-center justify-between">
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
@@ -768,20 +843,17 @@ export const CheckoutModal: React.FC = () => {
                   type="button"
                   disabled={isProcessingPayment}
                   onClick={handlePlaceOrder}
-                  className="px-8 py-3.5 rounded-full bg-[#5B3A29] hover:bg-[#43291B] text-white text-xs sm:text-sm font-semibold shadow-md transition flex items-center gap-2 disabled:opacity-50"
+                  className="w-full sm:w-auto px-7 py-3.5 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs sm:text-sm font-bold shadow-lg shadow-[#25D366]/25 transition flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isProcessingPayment ? (
-                    <span>
-                      {paymentMethod === 'upi_qr'
-                        ? 'Confirming UPI Payment...'
-                        : paymentMethod === 'razorpay'
-                        ? 'Processing Payment via Razorpay...'
-                        : 'Confirming Order...'}
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Opening WhatsApp (+91 8097706536)...
                     </span>
                   ) : (
                     <>
-                      <Lock className="w-4 h-4" />
-                      <span>Place Order • ₹{finalTotal}</span>
+                      <MessageCircle className="w-4 h-4 fill-white" />
+                      <span>Send Order to WhatsApp (8097706536) • ₹{finalTotal}</span>
                     </>
                   )}
                 </button>
@@ -792,8 +864,8 @@ export const CheckoutModal: React.FC = () => {
           {/* STEP: Success / Confirmation */}
           {step === 'success' && (
             <div className="text-center py-6 space-y-5">
-              <div className="w-16 h-16 rounded-full bg-[#E8F0DC] text-[#4A5D1E] flex items-center justify-center mx-auto border-2 border-[#D5E5BC]">
-                <Check className="w-8 h-8 stroke-[3]" />
+              <div className="w-16 h-16 rounded-full bg-[#E8F5E9] text-[#25D366] flex items-center justify-center mx-auto border-2 border-[#C8E6C9]">
+                <MessageCircle className="w-8 h-8 fill-[#25D366] text-white stroke-[2.5]" />
               </div>
 
               <div>
@@ -801,50 +873,64 @@ export const CheckoutModal: React.FC = () => {
                   Handmade with Love
                 </span>
                 <h3 className="font-heading text-2xl sm:text-3xl font-bold text-[#5B3A29]">
-                  Thank You for Your Order!
+                  Order Sent to WhatsApp!
                 </h3>
                 <p className="text-xs sm:text-sm text-[#6E6863] mt-1 max-w-md mx-auto">
-                  Your order <strong>{createdOrderNumber}</strong> has been received. Our artisans have begun spinning the yarn!
+                  Your order <strong>{createdOrderNumber}</strong> details are routed to WhatsApp <strong>+91 8097706536</strong>.
                 </p>
               </div>
 
               {/* Notification Badges */}
               <div className="p-4 rounded-2xl bg-[#FFF8F0] border border-[#EAD5C5] text-xs text-left max-w-md mx-auto space-y-2">
-                <div className="flex items-center gap-2 text-[#708238] font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>WhatsApp & Email Confirmation Dispatched</span>
+                <div className="flex items-center gap-2 text-[#25D366] font-semibold">
+                  <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
+                  <span>WhatsApp Message Sent to Artisan (+91 8097706536)</span>
                 </div>
                 <p className="text-[#6E6863] text-[11px]">
-                  Updates will be sent at each stage: Preparing → Packed → Shipped (Shiprocket) → Delivered.
+                  Our crochet master will review your selections, confirm stitching timelines, and provide real-time photo previews!
                 </p>
                 <div className="pt-2 border-t border-[#EAD5C5] flex justify-between text-[11px]">
                   <span className="text-[#8C7A6B]">Estimated Delivery Date:</span>
-                  <strong className="text-[#5B3A29]">Within 7 Days</strong>
+                  <strong className="text-[#5B3A29]">Within 7 Days across India</strong>
                 </div>
               </div>
 
-              <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  id="track-new-order-btn"
-                  onClick={() => {
-                    setTrackingSearchId(createdOrderNumber);
-                    setIsCheckoutOpen(false);
-                    setActiveTab('track');
-                  }}
-                  className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition shadow-sm"
-                >
-                  Track Order Timeline ({createdOrderNumber})
-                </button>
+              <div className="pt-2 flex flex-col items-center gap-3 max-w-md mx-auto">
+                {createdWhatsAppUrl && (
+                  <a
+                    href={createdWhatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3.5 px-6 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs sm:text-sm font-bold shadow-md transition flex items-center justify-center gap-2"
+                  >
+                    <MessageCircle className="w-4 h-4 fill-white" />
+                    <span>Open WhatsApp Chat Now (8097706536)</span>
+                  </a>
+                )}
 
-                <button
-                  onClick={() => {
-                    setIsCheckoutOpen(false);
-                    setActiveTab('shop');
-                  }}
-                  className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#F8D7DA] text-[#5B3A29] text-xs font-semibold hover:bg-[#F2BAC0] transition"
-                >
-                  Continue Browsing
-                </button>
+                <div className="flex flex-col sm:flex-row w-full gap-2">
+                  <button
+                    id="track-new-order-btn"
+                    onClick={() => {
+                      setTrackingSearchId(createdOrderNumber);
+                      setIsCheckoutOpen(false);
+                      setActiveTab('track');
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition shadow-xs"
+                  >
+                    Track Order Timeline ({createdOrderNumber})
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsCheckoutOpen(false);
+                      setActiveTab('shop');
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-full bg-[#F8D7DA] text-[#5B3A29] text-xs font-semibold hover:bg-[#F2BAC0] transition"
+                  >
+                    Continue Browsing
+                  </button>
+                </div>
               </div>
             </div>
           )}

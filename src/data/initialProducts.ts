@@ -2,80 +2,187 @@ import { Product, Coupon, Order, PurchasedItemFeedback } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
-    id: 'prod-red-flower-charm',
-    name: 'Red Flower Keychain / Phone Charm',
-    tagline: 'Handmade with love • Add a little flower power to your day',
-    price: 50,
-    originalPrice: 80,
+    id: 'prod-heart-hair-clips',
+    name: 'Crochet Heart Hair Clips (Pair - ₹20)',
+    tagline: 'Small clips • Big happiness • Stacked red & white hearts on alligator clips',
+    price: 20,
+    originalPrice: 40,
     rating: 5.0,
-    reviewsCount: 47,
-    category: 'Keychains',
-    stock: 25,
-    images: [
-      '/images/red_flower_charm.jpg',
-      'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Red Blossom & Sunshine Yellow', hex: '#D32F2F' },
-      { name: 'Coral Pink & Cream', hex: '#FF8A80' }
-    ],
+    reviewsCount: 64,
+    category: 'Hair Accessories',
+    stock: 45,
+    images: ['/assets/aistudio/hair_clip_____47816559.jpg'],
+    colors: [{ name: 'Red & Cream White', hex: '#D32F2F' }],
     description:
-      'Official DreamQueen handmade crochet flower charm! Features vibrant red petals with a cheerful sunny yellow center and a sturdy woven red loop string. Cute, trendy, lightweight, durable, and versatile — perfect for your bag, keys, and phone.',
-    yarnType: '100% Organic Combed Milk Cotton Yarn (4-ply)',
-    careInstructions: 'Spot clean with a damp cloth or gentle hand wash in cold water.',
-    tags: ['Keychains', 'Phone Charm', 'Flower', 'Under ₹100', 'Handmade', 'Cute & Trendy'],
+      'Official DreamQueen handmade crochet heart clips! Features cute stacked red and cream-white hearts securely mounted on lightweight alligator clips. Gentle on hair, lightweight, durable, and only ₹20. Perfect for gifting and daily sweet hairstyles.',
+    yarnType: '100% Breathable Milk Cotton Yarn',
+    careInstructions: 'Spot clean with mild damp cloth; air dry.',
+    tags: ['Hair Accessories', 'Heart', 'Under ₹50', '₹20', 'Best Seller', 'Handmade with Love'],
     isBestSeller: true,
     isNewArrival: true,
     isFeatured: true
   },
   {
-    id: 'prod-heart-phone-charm',
-    name: 'Crochet Heart Phone Charm',
-    tagline: 'Add a little love to your phone • Cute, simple, affordable',
-    price: 20,
-    originalPrice: 40,
+    id: 'prod-rose-crochet-bag',
+    name: 'Handmade Rose Crochet Bag with Pearl Strap',
+    tagline: 'Opulent 3D blooming rose handbag with lustrous pearl bead handle',
+    price: 499,
+    originalPrice: 799,
     rating: 5.0,
-    reviewsCount: 68,
-    category: 'Keychains',
-    stock: 35,
-    images: [
-      '/images/heart_phone_charm.jpg',
-      'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Passion Red', hex: '#C62828' },
-      { name: 'Blush Pink', hex: '#F48FB1' },
-      { name: 'Berry Wine', hex: '#880E4F' }
-    ],
+    reviewsCount: 48,
+    category: 'Bags & Pouches',
+    stock: 15,
+    images: ['/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg'],
+    colors: [{ name: 'Deep Crimson Rose', hex: '#8B0000' }],
     description:
-      'Handmade with care by DreamQueen. A miniature 3D puffed crochet heart charm with a woven hanging loop that attaches easily to any phone case lanyard hole, zipper, or keychain. Adds a cute touch to your daily style for only ₹20!',
-    yarnType: 'Soft Breathable Milk Cotton Yarn',
-    careInstructions: 'Spot clean with mild damp cloth; air dry.',
-    tags: ['Phone Charm', 'Heart', 'Under ₹50', 'Gifts', 'Best Seller', 'Affordable'],
+      'Showstopper artisanal statement piece! Layer after layer of dimensional crochet rose petals in deep crimson, finished with an exquisite heavy-duty pearl bead shoulder strap. Spaciously accommodates phone, lipstick, and everyday essentials.',
+    yarnType: 'Ultra-Soft Combed Organic Cotton with High-Luster Faux Pearls',
+    careInstructions: 'Spot clean with a clean damp cloth. Store flat or hung.',
+    tags: ['Bags & Pouches', 'Rose Bag', 'Pearl Strap', 'Handmade with Love', 'Luxury', 'Statement Piece'],
     isBestSeller: true,
+    isNewArrival: true,
+    isFeatured: true
+  },
+  {
+    id: 'prod-bow-phone-case',
+    name: 'DreamQueen Crochet Bow Phone Case',
+    tagline: 'Cozy protective knitted cover with plush statement bow',
+    price: 199,
+    originalPrice: 349,
+    rating: 4.9,
+    reviewsCount: 38,
+    category: 'Accessories',
+    stock: 20,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.38_PM_51e04cb2.jpeg'],
+    colors: [{ name: 'Burgundy with Cream Bow', hex: '#6A1A24' }],
+    description:
+      'Small accessories, big happiness! Handcrafted with love by DreamQueen. A rich burgundy textured crochet phone case featuring an oversized plush cream bow. Soft, shock-absorbing, durable, and perfectly snug on your phone.',
+    yarnType: 'Soft & Durable Milk Cotton Yarn',
+    careInstructions: 'Hand wash gently in cool water; reshape bow and lay flat to dry.',
+    tags: ['Phone Case', 'Bow', 'Accessories', 'Handmade with Love', 'Trendy'],
+    isBestSeller: true,
+    isNewArrival: true,
+    isFeatured: true
+  },
+  {
+    id: 'prod-crochet-bhandhana',
+    name: 'Handmade Crochet Bhandhana (Head Kerchief)',
+    tagline: 'Traditional look with a cute twist • Scalloped lace tie-up bandana',
+    price: 149,
+    originalPrice: 249,
+    rating: 4.9,
+    reviewsCount: 41,
+    category: 'Hair Accessories',
+    stock: 28,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.37_PM__1__b69ab62b.jpeg'],
+    colors: [{ name: 'Ruby Red with White Edge', hex: '#C62828' }],
+    description:
+      'Traditional look with a cute twist! Beautiful handcrafted triangle bandana with intricate openwork crochet and scalloped white lace border. Features soft adjustable tie cords for an effortless, comfortable all-day fit.',
+    yarnType: 'Lightweight Breathable Milk Cotton',
+    careInstructions: 'Hand wash in cold water with gentle detergent. Lay flat to dry.',
+    tags: ['Hair Accessories', 'Bhandhana', 'Bandana', 'Traditional Cute', 'Best Seller'],
+    isBestSeller: true,
+    isNewArrival: true,
+    isFeatured: true
+  },
+  {
+    id: 'prod-twin-cherry-keychain',
+    name: 'Twin Cherry Crochet Bag Charm',
+    tagline: 'Double plump red cherries with braided stem loop for tote bags & keys',
+    price: 50,
+    originalPrice: 99,
+    rating: 5.0,
+    reviewsCount: 56,
+    category: 'Keychains',
+    stock: 32,
+    images: ['/assets/aistudio/cherry_keychain_____________dm_to_order_on_8097706536_cad75670.jpg'],
+    colors: [{ name: 'Cherry Red & Leaf Green', hex: '#D50000' }],
+    description:
+      'Handcrafted twin plump red cherries with vibrant green crochet stems and hanging loop. Easily knots onto canvas tote bags, backpack zippers, or metal key rings. Adds instant fruity charm!',
+    yarnType: 'Combed Milk Cotton with Hypoallergenic Polyfill',
+    careInstructions: 'Spot clean with damp cloth.',
+    tags: ['Keychains', 'Cherry', 'Bag Charm', 'Under ₹100', 'Best Seller', 'Handmade'],
+    isBestSeller: true,
+    isNewArrival: false,
+    isFeatured: true
+  },
+  {
+    id: 'prod-red-bow-charm',
+    name: 'DreamQueen Red Bow Keychain & Clip',
+    tagline: 'Chunky scarlet crochet ribbon bow with hanging cord & bag attachment',
+    price: 50,
+    originalPrice: 89,
+    rating: 4.9,
+    reviewsCount: 39,
+    category: 'Keychains',
+    stock: 26,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.37_PM_1f29a8d1.jpeg'],
+    colors: [{ name: 'Scarlet Red', hex: '#D32F2F' }],
+    description:
+      'Handmade with love! A thick ribbed crochet bow in passionate scarlet red, crafted to hook onto your favorite tote bag, keys, or be worn as a statement hair accessory. Lightweight and long-lasting.',
+    yarnType: '100% Milk Cotton Yarn',
+    careInstructions: 'Spot clean with damp cloth.',
+    tags: ['Keychains', 'Bow', 'Hair Accessories', 'Under ₹100', 'Handmade with Love'],
+    isBestSeller: false,
+    isNewArrival: true,
+    isFeatured: true
+  },
+  {
+    id: 'prod-evil-eye-charm',
+    name: 'Evil Eye Crochet Bag Charm with Tassel',
+    tagline: 'Concentric blue & white protective talisman with soft flowing tassel',
+    price: 69,
+    originalPrice: 120,
+    rating: 5.0,
+    reviewsCount: 44,
+    category: 'Keychains',
+    stock: 24,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.36_PM_8d16b57e.jpeg'],
+    colors: [{ name: 'Royal Blue & Turquoise', hex: '#1565C0' }],
+    description:
+      'Wards off negative energy and brings blessings. Handcrafted concentric crochet circles in deep royal blue, turquoise, crisp white, and black, completed with a lavish multi-tone fringe tassel. Perfect bag accessory or car mirror charm.',
+    yarnType: 'Anti-Fray Cotton Yarn with Braided Hanging Cord',
+    careInstructions: 'Gentle spot cleaning; comb tassel lightly with fingers.',
+    tags: ['Keychains', 'Evil Eye', 'Talisman', 'Tassel', 'Protection', 'Bag Charm'],
+    isBestSeller: true,
+    isNewArrival: false,
+    isFeatured: true
+  },
+  {
+    id: 'prod-red-blossom-charm',
+    name: 'Red Blossom Flower Bag Charm',
+    tagline: 'Sunny daisy-style red petal flower with vibrant yellow crochet center',
+    price: 50,
+    originalPrice: 89,
+    rating: 4.9,
+    reviewsCount: 42,
+    category: 'Keychains',
+    stock: 25,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.35_PM__1__667859b8.jpeg'],
+    colors: [{ name: 'Crimson & Sun Yellow', hex: '#D32F2F' }],
+    description:
+      'Vibrant eight-petal red blossom with a soft textured golden yellow center. Handcrafted by DreamQueen with a sturdy woven loop string. Lightweight, cheerful, and an instant mood lifter for your backpack or handbag.',
+    yarnType: '100% Milk Cotton Yarn',
+    careInstructions: 'Spot clean with damp cloth.',
+    tags: ['Keychains', 'Flower', 'Blossom', 'Under ₹100', 'Handmade with Love'],
+    isBestSeller: false,
     isNewArrival: true,
     isFeatured: true
   },
   {
     id: 'prod-sunflower-keychain',
-    name: 'DreamQueen Sunflower Keychain',
-    tagline: 'Small accessory • Big happiness • Brighten up your bag',
+    name: 'DreamQueen Sunflower Bag Charm',
+    tagline: 'Cheerful golden petals with chocolate spiral core & hanging loop',
     price: 50,
     originalPrice: 90,
     rating: 5.0,
-    reviewsCount: 52,
+    reviewsCount: 58,
     category: 'Keychains',
     stock: 30,
-    images: [
-      '/images/sunflower_keychain.jpg',
-      'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Golden Sunflower', hex: '#FBC02D' },
-      { name: 'Pastel Lemon', hex: '#FFF3A8' }
-    ],
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.34_PM__1__056e15ac.jpeg'],
+    colors: [{ name: 'Golden Sunflower & Cocoa', hex: '#FBC02D' }],
     description:
-      'A joyful handmade crochet sunflower crafted petal by petal by DreamQueen. Attached to a sturdy silver-toned metal key ring. Lightweight, durable, and the sweetest thoughtful gift to brighten any bag or keyring.',
+      'The signature DreamQueen crochet sunflower! Radiates joy with pointed golden sunshine petals around a deeply textured cocoa brown spiral center. Attached with a secure braided yarn strap.',
     yarnType: 'High Grade Milk Cotton with Hypoallergenic Core',
     careInstructions: 'Spot clean with a damp microfiber cloth.',
     tags: ['Keychains', 'Sunflower', 'Gifts', 'Under ₹100', 'Best Seller', 'Handmade with Love'],
@@ -84,278 +191,64 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true
   },
   {
-    id: 'prod-pearl-rose-charm',
-    name: 'Pearl Blossom Crochet Rose',
-    tagline: 'Artisan layered petals with lustrous pearl center & twin leaves',
-    price: 50,
-    originalPrice: 99,
-    rating: 4.9,
-    reviewsCount: 31,
-    category: 'Hair Accessories',
+    id: 'prod-twin-tulip-charm',
+    name: 'Twin Tulip Blossom Hanging Charm',
+    tagline: 'Dual delicate pink bell tulips suspended on leafy green crochet vines',
+    price: 60,
+    originalPrice: 110,
+    rating: 5.0,
+    reviewsCount: 37,
+    category: 'Keychains',
     stock: 22,
-    images: [
-      '/images/pearl_rose_charm.jpg',
-      'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Scarlet Red with Pearl', hex: '#D32F2F' },
-      { name: 'Ruby Wine', hex: '#991B1B' }
-    ],
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.35_PM_352dedd1.jpeg'],
+    colors: [{ name: 'Baby Pink & Garden Green', hex: '#F48FB1' }],
     description:
-      'Handcrafted with intricate detail by DreamQueen artisans. Features rich multi-layered crochet rose petals accented by twin vibrant green leaves and an elegant round white pearl bead firmly stitched at the center. Fitted with a soft woven loop cord suitable for hair ties, bags, or keychains.',
-    yarnType: 'Organic Combed Cotton with Faux Freshwater Pearl',
-    careInstructions: 'Gentle hand wash in cold water with mild shampoo. Dry flat on towel.',
-    tags: ['Hair Accessories', 'Rose', 'Pearl', 'Under ₹100', 'Handmade', 'New Arrival'],
+      'Two adorable bell-shaped pastel pink tulip buds suspended from long green crochet stems with a realistic leaf accent. Drapes gracefully over bag handles, rearview mirrors, or belt loops.',
+    yarnType: 'Soft Combed Milk Cotton',
+    careInstructions: 'Spot clean gently with damp cloth.',
+    tags: ['Keychains', 'Tulip', 'Flower', 'Bag Charm', 'Cute', 'Handmade with Love'],
     isBestSeller: false,
     isNewArrival: true,
     isFeatured: true
   },
   {
-    id: 'prod-rose-hair-tie',
-    name: 'Handmade Rose Hair Tie',
-    tagline: 'Delicate hand-knitted velvet petal scrunchie',
-    price: 50,
-    originalPrice: 80,
-    rating: 4.9,
-    reviewsCount: 38,
-    category: 'Hair Accessories',
-    stock: 24,
-    images: [
-      'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Dusty Rose', hex: '#E8A598' },
-      { name: 'Soft Cream', hex: '#FFF8F0' },
-      { name: 'Berry Wine', hex: '#8B4052' }
-    ],
-    description:
-      'Handcrafted with ultra-soft combed milk cotton yarn, this rose hair tie gently holds your hair without snagging or creasing. Features intricate layered petals that look like a freshly bloomed garden rose.',
-    yarnType: '100% Organic Milk Cotton Yarn (4-ply)',
-    careInstructions: 'Gentle hand wash with cold water and mild baby shampoo. Lay flat on towel to air dry.',
-    tags: ['Hair Accessories', 'Rose', 'Under ₹100', 'Handmade', 'Cute'],
-    isBestSeller: true,
-    isNewArrival: false,
-    isFeatured: true
-  },
-  {
-    id: 'prod-sunflower-keychain',
-    name: 'Blooming Sunflower Keychain',
-    tagline: 'Bright pocket sunshine with brass lobster clasp',
+    id: 'prod-pearl-rose-charm',
+    name: 'Pearl Blossom Crochet Rose (Set of 3)',
+    tagline: 'Artisan layered rose petals with lustrous pearl center & twin green leaves',
     price: 50,
     originalPrice: 99,
     rating: 5.0,
-    reviewsCount: 52,
-    category: 'Keychains',
-    stock: 18,
-    images: [
-      'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1522383225653-ed111181a951?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Golden Marigold', hex: '#F4B41A' },
-      { name: 'Pastel Lemon', hex: '#FFF3A8' },
-      { name: 'Terracotta Center', hex: '#5B3A29' }
-    ],
+    reviewsCount: 49,
+    category: 'Hair Accessories',
+    stock: 25,
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.34_PM_0028ca0c.jpeg'],
+    colors: [{ name: 'Scarlet Red with Pearl', hex: '#D32F2F' }],
     description:
-      'A joyful handmade crochet sunflower crafted petal by petal. Attached to a sturdy, anti-tarnish gold-toned ring and lobster swivel hook. Perfect for tote bags, car keys, or gifting to friends.',
-    yarnType: 'High Grade Milk Cotton with Hypoallergenic Polyfill Core',
-    careInstructions: 'Spot clean with a damp microfiber cloth.',
-    tags: ['Keychains', 'Sunflower', 'Gifts', 'Under ₹100', 'Best Seller'],
+      'Handcrafted with intricate layered petals by DreamQueen. Accented by twin emerald leaves and a lustrous round pearl firmly stitched into the blossom center. Comes with sturdy woven loops for hair styling, bag charms, or gift packaging.',
+    yarnType: 'Combed Cotton with Faux Freshwater Pearl Beads',
+    careInstructions: 'Gentle hand wash in cold water; dry flat on a clean towel.',
+    tags: ['Hair Accessories', 'Rose', 'Pearl', 'Under ₹100', 'Handmade', 'Best Seller'],
     isBestSeller: true,
     isNewArrival: false,
     isFeatured: true
   },
   {
     id: 'prod-captain-shield-keychain',
-    name: 'Captain Shield Mini Charm',
-    tagline: 'Heroic crochet concentric circle bag charm',
+    name: 'Captain Shield Crochet Charm',
+    tagline: 'Heroic concentric red, white & blue roundel with white embroidered star',
     price: 50,
-    originalPrice: 120,
-    rating: 4.8,
-    reviewsCount: 29,
+    originalPrice: 99,
+    rating: 4.9,
+    reviewsCount: 35,
     category: 'Keychains',
-    stock: 15,
-    images: [
-      'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Classic Red & Blue', hex: '#C83E4D' },
-      { name: 'Pastel Hero Edition', hex: '#8FB8DE' }
-    ],
-    description:
-      'Inspired by the legendary vibranium shield, meticulously crocheted with clean color transitions and a miniature silver-embroidered star at the center. Compact, durable, and unique.',
-    yarnType: 'Mercerized Cotton Blend for Crisp Definition',
-    careInstructions: 'Spot clean only. Do not bleach.',
-    tags: ['Keychains', 'Superheroes', 'Mini Charms', 'Gift for Him & Her'],
-    isBestSeller: false,
-    isNewArrival: true,
-    isFeatured: true
-  },
-  {
-    id: 'prod-flower-clip',
-    name: 'Pastel Daisy Hair Clip',
-    tagline: 'French alligator clip lined with plush crochet flower',
-    price: 50,
-    originalPrice: 75,
-    rating: 4.9,
-    reviewsCount: 44,
-    category: 'Hair Accessories',
-    stock: 30,
-    images: [
-      'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Blush Pink', hex: '#F8D7DA' },
-      { name: 'Matcha Olive', hex: '#708238' },
-      { name: 'Cloud White', hex: '#F5F5F0' }
-    ],
-    description:
-      'Adorn your tresses with this lightweight crochet blossom. Lined with ribbon over a teeth-grip alligator clip so it stays firmly in place without tugging even delicate strands.',
-    yarnType: '100% Baby Soft Egyptian Cotton',
-    careInstructions: 'Wipe metal clip dry immediately if exposed to water.',
-    tags: ['Hair Accessories', 'Clip', 'Floral', 'Everyday Cute'],
-    isBestSeller: true,
-    isNewArrival: false,
-    isFeatured: true
-  },
-  {
-    id: 'prod-crochet-bookmark',
-    name: 'Sprout & Daisy Book Thong Bookmark',
-    tagline: 'Slender stem bookmark with blooming hanging blossom',
-    price: 50,
-    originalPrice: 85,
-    rating: 5.0,
-    reviewsCount: 31,
-    category: 'Bookmarks',
-    stock: 22,
-    images: [
-      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Forest Sprout', hex: '#708238' },
-      { name: 'Lavender Bud', hex: '#B8A9C9' },
-      { name: 'Coral Poppy', hex: '#F4845F' }
-    ],
-    description:
-      'The book lover’s dream companion. A thin crocheted vine sits flush inside the pages without damaging book bindings, while an enchanting handmade daisy and leaves dangle gracefully over the spine.',
-    yarnType: 'Super Fine Mercerized Cotton Lace Thread',
-    careInstructions: 'Steam iron gently on lowest cotton setting if folded.',
-    tags: ['Bookmarks', 'Book Lover', 'Reading Gifts', 'Handcrafted'],
-    isBestSeller: false,
-    isNewArrival: true,
-    isFeatured: true
-  },
-  {
-    id: 'prod-strawberry-pouch',
-    name: 'Crochet Strawberry Kisslock Pouch',
-    tagline: 'Hand-beaded vintage-style purse for earphones and coins',
-    price: 180,
-    originalPrice: 240,
-    rating: 4.9,
-    reviewsCount: 27,
-    category: 'Gifts',
-    stock: 12,
-    images: [
-      'https://images.unsplash.com/photo-1544816155-12df9643f363?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Berry Red', hex: '#D64045' },
-      { name: 'Milk White Strawberries', hex: '#FFF5F5' }
-    ],
-    description:
-      'Charming berry-shaped pouch with hand-embroidered seed dots and green calyx leaves. Holds lip balm, AirPods, keys, or pocket coins safely with an antique brass squeeze clasp.',
-    yarnType: '100% Milk Cotton Yarn + Cotton Inner Lining',
-    careInstructions: 'Hand wash gently inside out.',
-    tags: ['Gifts', 'Pouch', 'Strawberry', 'Aesthetic'],
-    isBestSeller: true,
-    isNewArrival: false,
-    isFeatured: true
-  },
-  {
-    id: 'prod-lavender-bouquet',
-    name: 'Everlasting Lavender & Tulip Bouquet',
-    tagline: '3-stem everlasting crochet bouquet wrapped in craft paper',
-    price: 299,
-    originalPrice: 420,
-    rating: 5.0,
-    reviewsCount: 46,
-    category: 'Flowers',
-    stock: 14,
-    images: [
-      'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Lilac Dream', hex: '#C3B1E1' },
-      { name: 'Sunset Peach', hex: '#FFD1BA' },
-      { name: 'Ivory White', hex: '#FFFBF0' }
-    ],
-    description:
-      'Flowers that never fade. Includes 2 stems of textured lavender sprigs and 1 elegant tulip with bendable wire stems wrapped in floral tape. Comes hand-wrapped in Korean wrapping paper with a satin bow.',
-    yarnType: 'Premium Anti-Pilling Milk Cotton with Flexible Stems',
-    careInstructions: 'Dust off gently with a soft dry brush or blow dryer on cool air.',
-    tags: ['Flowers', 'Bouquet', 'Anniversary', 'Gifts for Her'],
-    isBestSeller: true,
-    isNewArrival: false,
-    isFeatured: true
-  },
-  {
-    id: 'prod-cozy-daisy-coaster',
-    name: 'Fluffy Daisy Mug Rug Coaster',
-    tagline: 'Scalloped floral coaster for your morning matcha or chai',
-    price: 65,
-    originalPrice: 90,
-    rating: 4.8,
-    reviewsCount: 19,
-    category: 'Gifts',
     stock: 20,
-    images: [
-      'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Warm Cream & Caramel', hex: '#FFF8F0' },
-      { name: 'Sage & Pistachio', hex: '#708238' },
-      { name: 'Bubblegum Pink', hex: '#F8D7DA' }
-    ],
+    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.32_PM_bc5c9755.jpeg'],
+    colors: [{ name: 'Patriot Red, White & Blue', hex: '#0D47A1' }],
     description:
-      'Protect your workspace in the coziest way imaginable. Generously sized at 12cm diameter to hold any coffee mug, tumbler, or candle bowl safely.',
-    yarnType: 'Absorbent Thick Cotton Yarn',
-    careInstructions: 'Machine washable on cold gentle cycle in a wash bag.',
-    tags: ['Gifts', 'Coasters', 'Mug Rug', 'Cute Desk'],
-    isBestSeller: false,
-    isNewArrival: true,
-    isFeatured: false
-  },
-  {
-    id: 'prod-custom-order-deposit',
-    name: 'Bespoke Custom Crochet Creation',
-    tagline: 'Bring your Pinterest dream to life with our artisan hook',
-    price: 150,
-    originalPrice: 200,
-    rating: 5.0,
-    reviewsCount: 65,
-    category: 'Custom Orders',
-    stock: 99,
-    images: [
-      'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80'
-    ],
-    colors: [
-      { name: 'Custom Palette', hex: '#D4A017' }
-    ],
-    description:
-      'Have an idea for a special amigurumi pet, personalized initial keychain, wedding favors, or crochet beanie? Reserve your custom crafting slot here. Our master artisan will consult with you on WhatsApp/Email.',
-    yarnType: 'Selected based on your custom requirements',
-    careInstructions: 'Personalized care guide included with delivery.',
-    tags: ['Custom Orders', 'Personalized', 'Gifts', 'Bespoke'],
+      'Concentric hand-crocheted rounds in ruby red, optic white, and navy blue with a precision white star emblem in the center. Equipped with a white hanging loop for backpacks, key fobs, and comic lovers.',
+    yarnType: 'Durable Milk Cotton Yarn',
+    careInstructions: 'Spot clean with damp cloth.',
+    tags: ['Keychains', 'Hero Shield', 'Gifts', 'Under ₹100', 'Handmade with Love'],
     isBestSeller: false,
     isNewArrival: false,
     isFeatured: true
@@ -374,8 +267,8 @@ export const INITIAL_COUPONS: Coupon[] = [
   {
     code: 'FREESHIP',
     discountPercent: 0,
-    minOrderAmount: 199,
-    description: 'Free standard 7-day express shipping',
+    minOrderAmount: 499,
+    description: 'Free standard 7-day express shipping on orders over ₹499',
     isActive: true
   },
   {
@@ -383,7 +276,7 @@ export const INITIAL_COUPONS: Coupon[] = [
     discountPercent: 20,
     minOrderAmount: 399,
     maxDiscount: 200,
-    description: 'Special 20% off festival festive bundle discount',
+    description: 'Special 20% off festive bundle discount',
     isActive: true
   }
 ];
@@ -409,32 +302,30 @@ export const INITIAL_ORDERS: Order[] = [
     },
     items: [
       {
-        productId: 'prod-rose-hair-tie',
-        productName: 'Handmade Rose Hair Tie',
-        image: 'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80',
-        price: 50,
+        productId: 'prod-heart-hair-clips',
+        productName: 'Crochet Heart Hair Clips (Pair - ₹20)',
+        image: '/assets/aistudio/hair_clip_____47816559.jpg',
+        price: 20,
         quantity: 2,
-        color: { name: 'Dusty Rose', hex: '#E8A598' }
+        color: { name: 'Red & Cream White', hex: '#D32F2F' }
       },
       {
         productId: 'prod-sunflower-keychain',
-        productName: 'Blooming Sunflower Keychain',
-        image: 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=800&auto=format&fit=crop&q=80',
+        productName: 'DreamQueen Sunflower Bag Charm',
+        image: '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.34_PM__1__056e15ac.jpeg',
         price: 50,
         quantity: 1,
-        color: { name: 'Golden Marigold', hex: '#F4B41A' }
+        color: { name: 'Golden Sunflower & Cocoa', hex: '#FBC02D' }
       }
     ],
-    subtotal: 150,
-    discount: 15,
-    couponCode: 'DREAM10',
-    shippingFee: 40,
-    codFee: 0,
-    total: 175,
-    paymentMethod: 'razorpay',
-    paymentStatus: 'paid',
-    razorpayPaymentId: 'pay_NqR94827d921',
-    razorpayOrderId: 'order_948210398',
+    subtotal: 90,
+    discount: 0,
+    couponCode: undefined,
+    shippingFee: 20,
+    codFee: 10,
+    total: 120,
+    paymentMethod: 'cod',
+    paymentStatus: 'pending',
     trackingStatus: 'shipped',
     shiprocketTrackingNumber: 'SR-IND-74920482',
     estimatedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', {
@@ -442,7 +333,7 @@ export const INITIAL_ORDERS: Order[] = [
       month: 'short',
       year: 'numeric'
     }),
-    notes: 'Please pack in cute pink tissue paper for a birthday gift.'
+    notes: 'Please pack in cute tissue paper for a birthday gift.'
   }
 ];
 
@@ -451,25 +342,24 @@ export const INITIAL_FEEDBACKS: PurchasedItemFeedback[] = [
     id: 'fb-101',
     orderId: 'ord-demo-1',
     orderNumber: 'DQ-849201',
-    productId: 'prod-rose-hair-tie',
-    productName: 'Handmade Rose Hair Tie',
-    productImage: 'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80',
-    selectedColor: { name: 'Dusty Rose', hex: '#E8A598' },
+    productId: 'prod-heart-hair-clips',
+    productName: 'Crochet Heart Hair Clips (Pair - ₹20)',
+    productImage: '/assets/aistudio/hair_clip_____47816559.jpg',
+    selectedColor: { name: 'Red & Cream White', hex: '#D32F2F' },
     customerName: 'Aanya Sharma',
     customerEmail: 'aanya.sharma@example.com',
     rating: 5,
-    headline: 'Unbelievably soft yarn & gorgeous detailing!',
+    headline: 'Cutest heart clips ever for only ₹20!',
     comment:
-      'I was so pleasantly surprised! The milk cotton yarn feels like a cloud on my hair, doesn’t cause any tugging, and looks like a real delicate garden rose. The parcel arrived in aesthetic kraft wrapping with cute floral stickers.',
+      'I was so pleasantly surprised! The milk cotton yarn feels so gentle on my hair, doesn’t cause any tugging, and looks adorable. The parcel arrived in aesthetic kraft wrapping with cute floral stickers.',
     tags: ['Ultra-Soft Milk Cotton', 'Neat Stitches', 'Aesthetic Packaging', '7-Day Delivery'],
-    photoUrl: 'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=800&auto=format&fit=crop&q=80',
+    photoUrl: '/assets/aistudio/hair_clip_____47816559.jpg',
     recommend: true,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     artisanResponse: {
-      text: 'Thank you so much Aanya! Our artisan Priya in Pune put so much love into crocheting this dusty rose piece. Wear it with pride! 🌸💕',
+      text: 'Thank you so much Aanya! Our artisan team in Mumbai put so much love into crocheting these heart clips. Wear them with pride! 🌸💕',
       respondedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
       author: 'DreamQueen Atelier Team'
     }
   }
 ];
-

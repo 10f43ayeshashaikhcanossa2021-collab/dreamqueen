@@ -1,8 +1,8 @@
 export type ProductCategory =
-  | 'Hair Accessories'
   | 'Keychains'
-  | 'Bookmarks'
-  | 'Flowers'
+  | 'Hair Accessories'
+  | 'Bags & Pouches'
+  | 'Accessories'
   | 'Gifts'
   | 'Custom Orders';
 

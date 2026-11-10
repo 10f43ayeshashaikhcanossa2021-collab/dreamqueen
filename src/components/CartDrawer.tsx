@@ -8,9 +8,12 @@ import {
   ArrowRight,
   Tag,
   Check,
-  Truck
+  Truck,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
+import { getQuickCartWhatsAppUrl } from '../utils/whatsappHelper';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -71,11 +74,18 @@ export const CartDrawer: React.FC = () => {
 
   const handleProceedToCheckout = () => {
     setIsCartOpen(false);
-    if (!currentUser) {
-      openAuthModal('checkout');
-    } else {
-      setIsCheckoutOpen(true);
-    }
+    setIsCheckoutOpen(true);
+  };
+
+  const handleQuickWhatsAppOrder = () => {
+    const url = getQuickCartWhatsAppUrl(
+      cart,
+      cartSubtotal,
+      shippingFee,
+      finalTotal,
+      currentUser?.name
+    );
+    window.open(url, '_blank');
   };
 
   return (
@@ -172,7 +182,7 @@ export const CartDrawer: React.FC = () => {
                     className="flex gap-3.5 p-3.5 rounded-2xl bg-white border border-[#EAD5C5] shadow-xs"
                   >
                     <img
-                      src={item.product.images[0]}
+                      src={safeImage(item.product.images?.[0])}
                       alt={item.product.name}
                       className="w-20 h-20 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
                     />
@@ -340,15 +350,26 @@ export const CartDrawer: React.FC = () => {
                   <button
                     id="cart-checkout-btn"
                     onClick={handleProceedToCheckout}
-                    className="w-full py-3.5 px-4 rounded-full bg-[#5B3A29] hover:bg-[#43291B] text-white font-semibold text-sm shadow-md transition flex items-center justify-center gap-2"
+                    className="w-full py-3.5 px-4 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-sm shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <span>Proceed to Checkout</span>
+                    <MessageCircle className="w-4 h-4 fill-white" />
+                    <span>Send Order to WhatsApp (8097706536)</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button
+                    type="button"
+                    onClick={handleQuickWhatsAppOrder}
+                    className="w-full py-2.5 px-4 rounded-full bg-[#FFF8F0] hover:bg-[#F8EFE7] text-[#5B3A29] border border-[#EAD5C5] text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Send cart items immediately to WhatsApp without filling address form"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#8B4052]" />
+                    <span>Quick 1-Click WhatsApp Order (Skip Address Form)</span>
+                  </button>
+
+                  <button
                     onClick={() => setIsCartOpen(false)}
-                    className="w-full py-2 text-xs text-[#6E6863] hover:text-[#5B3A29] font-medium transition text-center"
+                    className="w-full py-1.5 text-xs text-[#6E6863] hover:text-[#5B3A29] font-medium transition text-center"
                   >
                     Continue Shopping
                   </button>

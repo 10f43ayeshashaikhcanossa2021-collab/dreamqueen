@@ -129,8 +129,8 @@ export const Hero: React.FC = () => {
               {/* Soft aesthetic border frame */}
               <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-[#FFF8F0] bg-[#FFF8F0]">
                 <img
-                  src="/images/heart hairclip.jpeg"
-                  alt="DreamQueen Handmade Crochet Flower Keychain and Phone Charm"
+                  src="/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg"
+                  alt="DreamQueen Handmade Rose Crochet Bag with Pearl Strap"
                   className="w-full h-[420px] sm:h-[480px] object-cover hover:scale-105 transition-transform duration-700"
                   referrerPolicy="no-referrer"
                 />

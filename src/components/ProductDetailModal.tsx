@@ -14,6 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 export const ProductDetailModal: React.FC = () => {
   const {
@@ -132,7 +133,7 @@ export const ProductDetailModal: React.FC = () => {
               <div className="space-y-4">
                 <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[#FFF8F0] border border-[#EAD5C5] group cursor-zoom-in">
                   <img
-                    src={selectedProduct.images[selectedImageIndex] || selectedProduct.images[0]}
+                    src={safeImage(selectedProduct.images?.[selectedImageIndex] || selectedProduct.images?.[0])}
                     alt={selectedProduct.name}
                     className="w-full h-full object-cover group-hover:scale-125 transition-transform duration-500 ease-out"
                     referrerPolicy="no-referrer"
@@ -156,7 +157,7 @@ export const ProductDetailModal: React.FC = () => {
                         }`}
                       >
                         <img
-                          src={img}
+                          src={safeImage(img)}
                           alt="thumbnail"
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
@@ -435,7 +436,7 @@ export const ProductDetailModal: React.FC = () => {
                         </div>
                       )}
 
-                      {fb.photoUrl && (
+                      {Boolean(fb.photoUrl?.trim()) && (
                         <div className="pt-2">
                           <img
                             src={fb.photoUrl}
@@ -536,9 +537,9 @@ export const ProductDetailModal: React.FC = () => {
                   You May Also Love
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {relatedProducts.map((rel) => (
+                  {relatedProducts.map((rel, idx) => (
                     <div
-                      key={rel.id}
+                      key={`${rel.id}-${idx}`}
                       onClick={() => {
                         setSelectedProduct(rel);
                         setSelectedImageIndex(0);
@@ -547,7 +548,7 @@ export const ProductDetailModal: React.FC = () => {
                       className="cursor-pointer group p-2.5 rounded-2xl bg-[#FFF8F0] border border-[#EAD5C5] hover:shadow-md transition"
                     >
                       <img
-                        src={rel.images[0]}
+                        src={safeImage(rel.images?.[0])}
                         alt={rel.name}
                         className="w-full aspect-square object-cover rounded-xl mb-2 group-hover:scale-105 transition-transform"
                       />

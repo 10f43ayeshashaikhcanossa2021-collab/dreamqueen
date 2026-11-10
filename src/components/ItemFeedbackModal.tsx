@@ -15,6 +15,7 @@ import {
   Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { resolveItemImage, safeImage } from '../utils/imageHelper';
 
 const CRAFT_TAGS = [
   '🧶 Ultra-Soft Milk Cotton',
@@ -29,16 +30,16 @@ const CRAFT_TAGS = [
 
 const PHOTO_PRESETS = [
   {
-    label: 'Gift Packaging',
-    url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=600&auto=format&fit=crop&q=80'
+    label: 'Hair Clip',
+    url: '/assets/aistudio/hair_clip_____47816559.jpg'
   },
   {
-    label: 'Hair Accessory',
-    url: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=600&auto=format&fit=crop&q=80'
+    label: 'Bag Charm',
+    url: '/assets/aistudio/cherry_keychain_____________dm_to_order_on_8097706536_cad75670.jpg'
   },
   {
-    label: 'Bag Charm / Keychain',
-    url: 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=600&auto=format&fit=crop&q=80'
+    label: 'Rose Bag',
+    url: '/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg'
   }
 ];
 
@@ -126,7 +127,7 @@ export const ItemFeedbackModal: React.FC = () => {
       orderNumber: order.orderNumber,
       productId: item.productId,
       productName: item.productName,
-      productImage: item.image,
+      productImage: resolveItemImage(item.productId, item.image),
       selectedColor: item.color,
       customerName: currentUser?.name || order.customer.name || 'Valued Customer',
       customerEmail: currentUser?.email || order.customer.email || 'dreamqueen29@gmail.com',
@@ -184,7 +185,7 @@ export const ItemFeedbackModal: React.FC = () => {
             {/* Purchased Item Snapshot */}
             <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-[#FDF9F4] border border-[#EAD5C5]">
               <img
-                src={item.image}
+                src={resolveItemImage(item.productId, item.image)}
                 alt={item.productName}
                 className="w-16 h-16 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
               />
@@ -350,7 +351,7 @@ export const ItemFeedbackModal: React.FC = () => {
                         : 'border-[#EAD5C5] opacity-80 hover:opacity-100'
                     }`}
                   >
-                    <img src={p.url} alt={p.label} className="w-full h-14 object-cover" />
+                    <img src={safeImage(p.url)} alt={p.label} className="w-full h-14 object-cover" />
                     <span className="block text-[10px] font-semibold text-[#5B3A29] p-1 truncate bg-white/90">
                       {p.label}
                     </span>

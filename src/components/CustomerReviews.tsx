@@ -1,6 +1,7 @@
 import React from 'react';
 import { Star, CheckCircle, Heart, Quote } from 'lucide-react';
 import { motion } from 'motion/react';
+import { safeImage } from '../utils/imageHelper';
 
 const REVIEWS = [
   {
@@ -90,7 +91,7 @@ export const CustomerReviews: React.FC = () => {
               {/* Author & Product */}
               <div className="mt-6 pt-4 border-t border-[#F0DFD1] flex items-center gap-3">
                 <img
-                  src={review.avatar}
+                  src={safeImage(review.avatar)}
                   alt={review.name}
                   className="w-11 h-11 rounded-full object-cover border-2 border-[#F8D7DA]"
                 />

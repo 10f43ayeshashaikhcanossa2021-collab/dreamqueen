@@ -58,7 +58,7 @@ export const BestSellersCarousel: React.FC = () => {
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {bestSellers.map((product, idx) => (
-            <div key={product.id} className="w-[270px] sm:w-[300px] shrink-0 snap-start">
+            <div key={`${product.id}-${idx}`} className="w-[270px] sm:w-[300px] shrink-0 snap-start">
               <ProductCard product={product} index={idx} />
             </div>
           ))}

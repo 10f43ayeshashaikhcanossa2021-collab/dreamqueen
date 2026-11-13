@@ -1,9 +1,30 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext';
-import { Heart, Pin, MessageCircle, Mail, MapPin, ShieldCheck, Truck, RefreshCw, QrCode, Lock } from 'lucide-react';
+import {
+  Heart,
+  Pin,
+  MessageCircle,
+  Mail,
+  MapPin,
+  ShieldCheck,
+  Truck,
+  RefreshCw,
+  QrCode
+} from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { setActiveTab, setIsUpiScannerOpen } = useStore();
+  const { setActiveTab, setSelectedShopCategory, setIsUpiScannerOpen } = useStore();
+
+  const navigateShopCategory = (cat: string) => {
+    setSelectedShopCategory(cat);
+    setActiveTab('shop');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateTab = (tab: any) => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <footer className="bg-[#FFF8F0] border-t border-[#EAD5C5] text-[#2E2E2E]">
@@ -17,7 +38,7 @@ export const Footer: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-xs font-bold text-[#5B3A29]">Fast 7-Day Delivery</h4>
-                <p className="text-[11px] text-[#6E6863]">Direct to doorstep across India</p>
+                <p className="text-[11px] text-[#6E6863]">₹20 flat shipping (Free ≥ ₹499)</p>
               </div>
             </div>
 
@@ -27,7 +48,7 @@ export const Footer: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-xs font-bold text-[#5B3A29]">100% Handcrafted</h4>
-                <p className="text-[11px] text-[#6E6863]">Organic soft milk cotton yarn</p>
+                <p className="text-[11px] text-[#6E6863]">Soft organic milk cotton yarn</p>
               </div>
             </div>
 
@@ -36,8 +57,8 @@ export const Footer: React.FC = () => {
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-[#5B3A29]">Razorpay & COD</h4>
-                <p className="text-[11px] text-[#6E6863]">100% Secure & verified checkout</p>
+                <h4 className="text-xs font-bold text-[#5B3A29]">UPI QR & COD (₹10)</h4>
+                <p className="text-[11px] text-[#6E6863]">Secure verified checkout</p>
               </div>
             </div>
 
@@ -64,9 +85,7 @@ export const Footer: React.FC = () => {
                 🌸
               </div>
               <div>
-                <span className="font-heading text-2xl font-bold text-[#5B3A29]">
-                  DreamQueen
-                </span>
+                <span className="font-heading text-2xl font-bold text-[#5B3A29]">DreamQueen</span>
                 <span className="block text-[11px] font-handwriting text-[#708238] font-bold -mt-1">
                   Handmade with Love
                 </span>
@@ -74,7 +93,7 @@ export const Footer: React.FC = () => {
             </div>
 
             <p className="text-xs sm:text-sm text-[#6E6863] leading-relaxed max-w-sm">
-              DreamQueen is an artisanal handmade crochet boutique celebrating the beauty of gentle slow fashion, tactile milk-cotton craftsmanship, and thoughtful gifting. Every piece is woven with care and joy.
+              DreamQueen Atelier is an artisanal handmade crochet boutique celebrating tactile milk-cotton craftsmanship, everyday accessories, and thoughtful keepsakes.
             </p>
 
             <div className="flex items-center gap-3 pt-1">
@@ -84,7 +103,6 @@ export const Footer: React.FC = () => {
                 rel="noreferrer"
                 className="p-2.5 rounded-full bg-white border border-[#EAD5C5] text-[#E60023] hover:bg-[#FEE2E2] transition shadow-xs"
                 aria-label="Pinterest"
-                title="Follow us on Pinterest (@ayeshalk2025)"
               >
                 <Pin className="w-4 h-4" />
               </a>
@@ -107,136 +125,110 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Shop Links */}
+          {/* Shop Collections */}
           <div>
             <h4 className="font-heading text-sm font-bold text-[#5B3A29] mb-4">Shop Collections</h4>
             <ul className="space-y-2 text-xs text-[#55504C]">
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('shop');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
+                <button onClick={() => navigateShopCategory('All')} className="hover:underline">
                   All Crochet Pieces
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => {
-                    setActiveTab('shop');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
+                  onClick={() => navigateShopCategory('Hair Accessories')}
+                  className="hover:underline"
                 >
                   Hair Accessories & Clips
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => {
-                    setActiveTab('shop');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
+                  onClick={() => navigateShopCategory('Keychains')}
+                  className="hover:underline"
                 >
                   Sunflowers & Keychains
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => {
-                    setActiveTab('shop');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
+                  onClick={() => navigateShopCategory('Bags & Pouches')}
+                  className="hover:underline"
                 >
-                  Daisy Bookmarks
+                  Rose Bags & Charms
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('custom');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
-                  Custom Crochet Requests
+                <button onClick={() => navigateTab('custom')} className="hover:underline">
+                  Custom Crochet Orders
                 </button>
               </li>
             </ul>
           </div>
 
-          {/* Customer Care */}
+          {/* Policies & Support */}
           <div>
-            <h4 className="font-heading text-sm font-bold text-[#5B3A29] mb-4">Customer Care</h4>
+            <h4 className="font-heading text-sm font-bold text-[#5B3A29] mb-4">
+              Policies & Support
+            </h4>
             <ul className="space-y-2 text-xs text-[#55504C]">
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('customer');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
-                  My Account & Orders
+                <button onClick={() => navigateTab('track')} className="hover:underline">
+                  Track Order
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('contact');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
-                  Shipping & Return Policy
+                <button onClick={() => navigateTab('shipping')} className="hover:underline">
+                  Shipping Policy
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('contact');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
-                  Yarn Care Instructions
+                <button onClick={() => navigateTab('refunds')} className="hover:underline">
+                  Cancellation & Refunds
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => {
-                    setActiveTab('contact');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline"
-                >
-                  FAQ & Support
+                <button onClick={() => navigateTab('privacy')} className="hover:underline">
+                  Privacy Policy
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigateTab('terms')} className="hover:underline">
+                  Terms & Conditions
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigateTab('contact')} className="hover:underline">
+                  FAQ & Contact Studio
                 </button>
               </li>
             </ul>
           </div>
 
-          {/* Contact & Hours */}
+          {/* Artisan Studio */}
           <div>
             <h4 className="font-heading text-sm font-bold text-[#5B3A29] mb-4">Artisan Studio</h4>
             <ul className="space-y-2.5 text-xs text-[#55504C]">
               <li className="flex items-start gap-2">
                 <MapPin className="w-3.5 h-3.5 text-[#5B3A29] shrink-0 mt-0.5" />
-                <span>Room No. 30, Building No. 47, Anarya Co. Op. Housing Society, Mahim (East)</span>
+                <span>
+                  Room No. 30, Building No. 47, Anarya Co. Op. Housing Society, Mahim (East)
+                </span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-[#5B3A29] shrink-0" />
-                <a href="mailto:ayeshalk2025@gmail.com" className="hover:text-[#5B3A29] hover:underline">
+                <a href="mailto:ayeshalk2025@gmail.com" className="hover:underline">
                   ayeshalk2025@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-2">
                 <MessageCircle className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-                <a href="https://wa.me/918097706536" target="_blank" rel="noreferrer" className="hover:text-[#5B3A29] hover:underline">
+                <a
+                  href="https://wa.me/918097706536"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline"
+                >
                   +91 8097706536
                 </a>
               </li>
@@ -250,34 +242,36 @@ export const Footer: React.FC = () => {
                   <span>Scan to Pay (India Post QR)</span>
                 </button>
               </li>
-              <li className="text-[11px] text-[#8C7A6B] pt-0.5">
-                Artisan crafting hours: Mon – Sat (10am – 7pm)
+              <li className="text-[11px] text-[#6E6863]">
+                Studio hours: Mon – Sat (10am – 7pm)
               </li>
             </ul>
           </div>
         </div>
 
-        {/* Bottom copyright & payment icons */}
-        <div className="mt-12 pt-6 border-t border-[#EAD5C5]/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#8C7A6B]">
+        {/* Bottom Copyright */}
+        <div className="mt-12 pt-6 border-t border-[#EAD5C5]/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6E6863]">
           <div className="flex items-center gap-1.5">
-            <span>© {new Date().getFullYear()} DreamQueen.</span>
+            <span>© {new Date().getFullYear()} DreamQueen Atelier.</span>
             <span>Handmade with</span>
             <Heart className="w-3.5 h-3.5 text-[#C83E4D] fill-[#C83E4D] inline" />
-            <span>in India.</span>
+            <span>in Mumbai, India.</span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-center text-[11px] font-medium text-[#5B3A29]">
             <button
               onClick={() => setIsUpiScannerOpen(true)}
-              className="px-2 py-0.5 rounded-md bg-[#FFF8F0] border border-[#EAD5C5] text-[#5B3A29] font-bold hover:bg-[#F3E5D8] transition flex items-center gap-1 cursor-pointer"
+              className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5] font-bold hover:bg-[#F3E5D8] transition flex items-center gap-1"
             >
               <QrCode className="w-3 h-3 text-[#708238]" />
               <span>India Post UPI QR</span>
             </button>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">Razorpay Gateway</span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">GPay / PhonePe</span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">Cash on Delivery</span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">Shiprocket 7-Day</span>
+            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">
+              Razorpay Verified
+            </span>
+            <span className="px-2 py-0.5 rounded-md bg-white border border-[#EAD5C5]">
+              COD ₹10
+            </span>
           </div>
         </div>
       </div>

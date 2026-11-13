@@ -30,6 +30,7 @@ export interface Product {
   isBestSeller?: boolean;
   isNewArrival?: boolean;
   isFeatured?: boolean;
+  isActive?: boolean;
 }
 
 export interface CartItem {
@@ -52,6 +53,7 @@ export interface Review {
 
 export interface PurchasedItemFeedback {
   id: string;
+  userId?: string;
   orderId: string;
   orderNumber: string;
   productId: string;
@@ -66,6 +68,8 @@ export interface PurchasedItemFeedback {
   tags: string[];
   photoUrl?: string;
   recommend: boolean;
+  isVerifiedPurchase?: boolean;
+  isApproved?: boolean;
   createdAt: string;
   artisanResponse?: {
     text: string;
@@ -75,17 +79,35 @@ export interface PurchasedItemFeedback {
 }
 
 export type PaymentMethod = 'razorpay' | 'upi_qr' | 'cod';
-export type PaymentStatus = 'paid' | 'pending' | 'failed';
+export type PaymentStatus =
+  | 'paid'
+  | 'pending'
+  | 'failed'
+  | 'refund_initiated'
+  | 'refunded';
+
 export type OrderTrackingStatus =
   | 'pending'
+  | 'payment_pending'
+  | 'payment_confirmed'
   | 'preparing'
   | 'packed'
   | 'shipped'
   | 'out_for_delivery'
   | 'delivered'
-  | 'cancelled';
+  | 'cancelled'
+  | 'refund_initiated'
+  | 'refunded';
+
+export interface OrderStatusHistoryEntry {
+  status: OrderTrackingStatus;
+  timestamp: string;
+  note?: string;
+}
 
 export interface ShippingAddress {
+  id?: string;
+  label?: string;
   fullName: string;
   phone: string;
   email: string;
@@ -95,6 +117,7 @@ export interface ShippingAddress {
   city: string;
   state: string;
   pincode: string;
+  isDefault?: boolean;
 }
 
 export interface OrderItem {
@@ -109,7 +132,9 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string; // e.g. DQ-849102
+  userId?: string;
   createdAt: string;
+  updatedAt?: string;
   customer: {
     name: string;
     email: string;
@@ -128,10 +153,15 @@ export interface Order {
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   upiTransactionRef?: string;
+  paymentVerifiedAt?: string;
   trackingStatus: OrderTrackingStatus;
   shiprocketTrackingNumber?: string;
   estimatedDeliveryDate: string;
   notes?: string;
+  cancellationReason?: string;
+  refundStatus?: string;
+  refundId?: string;
+  statusHistory?: OrderStatusHistoryEntry[];
 }
 
 export interface User {
@@ -140,6 +170,7 @@ export interface User {
   email: string;
   phone: string;
   role: 'customer' | 'admin';
+  emailConfirmed?: boolean;
   savedAddresses: ShippingAddress[];
   wishlistProductIds: string[];
 }
@@ -151,10 +182,14 @@ export interface Coupon {
   maxDiscount?: number;
   description: string;
   isActive: boolean;
+  expiresAt?: string;
+  maxUses?: number;
+  usedCount?: number;
 }
 
 export interface CustomOrderRequest {
   id: string;
+  userId?: string;
   customerName: string;
   email: string;
   phone: string;
@@ -165,7 +200,9 @@ export interface CustomOrderRequest {
   deliveryDatePreference: string;
   referenceImageUrl?: string;
   message: string;
-  status: 'submitted' | 'reviewing' | 'accepted' | 'in_progress' | 'completed';
+  status: 'submitted' | 'reviewing' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
+  quotedPrice?: number;
+  adminNotes?: string;
   createdAt: string;
 }
 
@@ -181,4 +218,26 @@ export interface StoreSettings {
   pinterestHandle: string;
   upiId: string;
   upiPayeeName: string;
+  studioAddress?: string;
 }
+
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  status: 'active' | 'unsubscribed';
+  source?: string;
+  createdAt: string;
+}
+
+export type AppTab =
+  | 'home'
+  | 'shop'
+  | 'custom'
+  | 'track'
+  | 'customer'
+  | 'contact'
+  | 'admin'
+  | 'privacy'
+  | 'terms'
+  | 'shipping'
+  | 'refunds';

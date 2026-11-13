@@ -13,6 +13,7 @@ interface ProductCardProps {
 export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
   const { isInWishlist, toggleWishlist, addToCart, setSelectedProduct } = useStore();
   const wishlisted = isInWishlist(product.id);
+  const outOfStock = product.stock <= 0;
 
   return (
     <motion.div
@@ -27,14 +28,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
         <img
           src={safeImage(product.images?.[0])}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${
+            outOfStock ? 'opacity-65 grayscale-[30%]' : ''
+          }`}
           loading="lazy"
           referrerPolicy="no-referrer"
         />
 
         {/* Badges */}
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10 pointer-events-none">
-          {product.price <= 20 ? (
+          {outOfStock ? (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-white shadow-xs">
+              Out of Stock
+            </span>
+          ) : product.price <= 20 ? (
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#F8D7DA] text-[#842029] border border-[#F0B8BE] shadow-xs">
               Special ₹20
             </span>
@@ -43,19 +50,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
               Special ₹50
             </span>
           ) : null}
-          {product.isBestSeller && (
+          {!outOfStock && product.isBestSeller && (
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#FFF8F0] text-[#5B3A29] border border-[#EAD5C5] shadow-xs">
               Best Seller
             </span>
           )}
-          {product.isNewArrival && (
+          {!outOfStock && product.isNewArrival && (
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#E8F0DC] text-[#4A5D1E] border border-[#D5E5BC] shadow-xs">
               New Drop
             </span>
           )}
         </div>
 
-        {/* Wishlist Heart Button */}
+        {/* Wishlist Heart */}
         <button
           id={`wishlist-btn-${product.id}`}
           onClick={(e) => {
@@ -72,7 +79,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
           <Heart className={`w-4 h-4 ${wishlisted ? 'fill-[#C83E4D]' : ''}`} />
         </button>
 
-        {/* Quick View Button on Hover */}
+        {/* Quick View */}
         <div className="absolute inset-0 bg-black/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
           <button
             onClick={() => setSelectedProduct(product)}
@@ -87,17 +94,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
       {/* Content */}
       <div className="flex-1 flex flex-col justify-between">
         <div>
-          {/* Category & Rating */}
           <div className="flex items-center justify-between text-[11px] text-[#708238] font-medium mb-1">
             <span>{product.category}</span>
             <div className="flex items-center gap-1 text-[#D4A017]">
               <Star className="w-3.5 h-3.5 fill-[#D4A017]" />
               <span className="font-bold text-[#2E2E2E]">{product.rating}</span>
-              <span className="text-[#8C7A6B]">({product.reviewsCount})</span>
+              <span className="text-[#6E6863]">({product.reviewsCount})</span>
             </div>
           </div>
 
-          {/* Product Name */}
           <h3
             onClick={() => setSelectedProduct(product)}
             className="font-heading text-base sm:text-lg font-bold text-[#2E2E2E] group-hover:text-[#5B3A29] cursor-pointer transition line-clamp-1"
@@ -105,11 +110,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
             {product.name}
           </h3>
 
-          <p className="text-xs text-[#6E6863] line-clamp-1 mt-0.5 font-light">
-            {product.tagline}
-          </p>
+          <p className="text-xs text-[#6E6863] line-clamp-1 mt-0.5 font-light">{product.tagline}</p>
 
-          {/* Color swatches preview */}
           {product.colors && product.colors.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2">
               {product.colors.slice(0, 4).map((c, i) => (
@@ -121,40 +123,53 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) 
                 />
               ))}
               {product.colors.length > 4 && (
-                <span className="text-[10px] text-[#8C7A6B]">
-                  +{product.colors.length - 4}
-                </span>
+                <span className="text-[10px] text-[#6E6863]">+{product.colors.length - 4}</span>
               )}
             </div>
           )}
         </div>
 
-        {/* Pricing & Add to Cart button */}
+        {/* Pricing & Add */}
         <div className="mt-4 pt-3 border-t border-[#F0DFD1] flex items-center justify-between">
           <div>
             <div className="flex items-baseline gap-1.5">
-              <span className="font-price font-bold text-lg text-[#5B3A29]">
+              <span className="font-price font-bold text-lg text-[#5B3A29] tabular-nums">
                 ₹{product.price}
               </span>
               {product.originalPrice && product.originalPrice > product.price && (
-                <span className="text-xs text-[#9C948D] line-through font-price">
+                <span className="text-xs text-[#9C948D] line-through font-price tabular-nums">
                   ₹{product.originalPrice}
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-[#708238] block font-medium">
-              Handcrafted on order
+            <span
+              className={`text-[10px] block font-medium ${
+                outOfStock
+                  ? 'text-[#842029]'
+                  : product.stock <= 5
+                  ? 'text-[#855D00]'
+                  : 'text-[#708238]'
+              }`}
+            >
+              {outOfStock
+                ? 'Currently sold out'
+                : product.stock <= 5
+                ? `Only ${product.stock} left`
+                : 'Handcrafted on order'}
             </span>
           </div>
 
           <button
             id={`add-to-cart-btn-${product.id}`}
+            disabled={outOfStock}
             onClick={() => addToCart(product, 1, 0)}
-            className="p-2.5 sm:px-3 sm:py-2 rounded-xl bg-[#FFF8F0] hover:bg-[#5B3A29] text-[#5B3A29] hover:text-white border border-[#EAD5C5] hover:border-[#5B3A29] transition-all flex items-center gap-1.5 shadow-xs"
+            className="p-2.5 sm:px-3 sm:py-2 rounded-xl bg-[#FFF8F0] hover:bg-[#5B3A29] text-[#5B3A29] hover:text-white border border-[#EAD5C5] hover:border-[#5B3A29] transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-[#FFF8F0] disabled:hover:text-[#5B3A29]"
             aria-label={`Add ${product.name} to cart`}
           >
             <ShoppingBag className="w-4 h-4" />
-            <span className="hidden sm:inline text-xs font-semibold">Add</span>
+            <span className="hidden sm:inline text-xs font-semibold">
+              {outOfStock ? 'Sold Out' : 'Add'}
+            </span>
           </button>
         </div>
       </div>

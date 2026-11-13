@@ -1,16 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
-import {
+import type {
   Order,
   PurchasedItemFeedback,
   CustomOrderRequest,
   Product,
   Coupon,
   StoreSettings,
-  OrderTrackingStatus
+  OrderTrackingStatus,
+  ShippingAddress
 } from '../types';
 import { resolveItemImage } from '../utils/imageHelper';
+import { DEFAULT_STORE_SETTINGS } from '../utils/pricing';
 
-// Supabase configuration provided by the user
 const env = (import.meta as any)?.env || {};
 export const SUPABASE_URL =
   env.VITE_SUPABASE_URL ||
@@ -22,17 +23,81 @@ export const SUPABASE_ANON_KEY =
   env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvc2RpcXBkcGZtb3p1dW9ncm96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NTczMDUsImV4cCI6MjEwNTAzMzMwNX0.SahukijE13jnAqc65MBTcJsBygisCsEESNDQ6FsVZ9c';
 
-// Create and export the Supabase client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
 
+// =========================================================
+// IMAGE VALIDATION & SUPABASE STORAGE HELPERS
+// =========================================================
 
-/**
- * Product synchronization helpers.
- *
- * Products are store-wide data, so they must live in Supabase rather than
- * browser localStorage. These helpers convert between the app's camelCase
- * Product shape and the products table's snake_case columns.
- */
+const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+export function validateImageUploadFile(file: File): string | null {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return 'Only JPG, PNG, or WEBP images are supported.';
+  }
+  if (file.size > MAX_IMAGE_FILE_BYTES) {
+    return 'Image file size must be 5 MB or less.';
+  }
+  return null;
+}
+
+export async function uploadImageToBucket(
+  bucket: 'product-images' | 'custom-order-references',
+  file: File,
+  folderPrefix: string = 'uploads'
+): Promise<{ publicUrl?: string; error?: string }> {
+  const validationError = validateImageUploadFile(file);
+  if (validationError) {
+    return { error: validationError };
+  }
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const safeSlug = file.name
+    .replace(/\.[^/.]+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '-')
+    .slice(0, 40);
+  const path = `${folderPrefix}/${Date.now()}-${safeSlug}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type
+    });
+
+  if (uploadError) {
+    return { error: uploadError.message };
+  }
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return { publicUrl: data.publicUrl };
+}
+
+export async function deleteStorageImageByUrl(
+  bucket: 'product-images' | 'custom-order-references',
+  publicUrl: string
+): Promise<void> {
+  if (!publicUrl || !publicUrl.includes(`/storage/v1/object/public/${bucket}/`)) {
+    return;
+  }
+  const objectPath = publicUrl.split(`/storage/v1/object/public/${bucket}/`)[1];
+  if (!objectPath) return;
+  await supabase.storage.from(bucket).remove([decodeURIComponent(objectPath)]);
+}
+
+// =========================================================
+// PRODUCTS
+// =========================================================
+
 export function productFromSupabaseRow(row: any): Product {
   let colors = row.colors;
   if (typeof colors === 'string') {
@@ -92,6 +157,7 @@ export function productFromSupabaseRow(row: any): Product {
     isBestSeller: Boolean(row.is_best_seller),
     isNewArrival: Boolean(row.is_new_arrival),
     isFeatured: Boolean(row.is_featured),
+    isActive: row.is_active === undefined || row.is_active === null ? true : Boolean(row.is_active)
   };
 }
 
@@ -115,31 +181,34 @@ export function productToSupabaseRow(product: Product) {
     is_best_seller: Boolean(product.isBestSeller),
     is_new_arrival: Boolean(product.isNewArrival),
     is_featured: Boolean(product.isFeatured),
-    updated_at: new Date().toISOString(),
+    is_active: product.isActive === undefined ? true : Boolean(product.isActive),
+    updated_at: new Date().toISOString()
   };
 }
 
 export async function fetchProductsFromSupabase(): Promise<Product[]> {
-  // Query without unindexed server-side sorting to avoid PostgreSQL 57014 statement timeout on large image arrays
-  const { data, error } = await supabase
-    .from('products')
-    .select('*');
-
+  const { data, error } = await supabase.from('products').select('*');
   if (error) throw error;
   const list = (data || []).map(productFromSupabaseRow);
-  return list.sort((a, b) => {
-    const timeA = (a as any).updated_at || (a as any).updatedAt || a.id;
-    const timeB = (b as any).updated_at || (b as any).updatedAt || b.id;
-    return String(timeB).localeCompare(String(timeA));
-  });
+  return list.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function upsertProductToSupabase(product: Product): Promise<void> {
   const { error } = await supabase
     .from('products')
     .upsert(productToSupabaseRow(product), { onConflict: 'id' });
-
   if (error) throw error;
+}
+
+export async function syncProductToSupabase(
+  product: Product
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await upsertProductToSupabase(product);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
 }
 
 export async function deleteProductFromSupabase(id: string): Promise<void> {
@@ -147,84 +216,9 @@ export async function deleteProductFromSupabase(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/**
- * Seed the cloud catalog only when the products table is empty.
- * This prevents a device's localStorage from becoming the source of truth.
- */
-export async function seedInitialProductsToSupabase(products: Product[]): Promise<Product[]> {
-  if (!products.length) return [];
-
-  const { error } = await supabase
-    .from('products')
-    .upsert(products.map(productToSupabaseRow), { onConflict: 'id' });
-
-  if (error) throw error;
-  return products;
-}
-
-export interface SupabaseHealthStatus {
-  connected: boolean;
-  url: string;
-  latencyMs: number;
-  message: string;
-  tables: {
-    orders: boolean;
-    custom_orders: boolean;
-    feedbacks: boolean;
-    products: boolean;
-  };
-}
-
-/**
- * Checks connectivity and verifies which tables currently exist in the database.
- */
-export async function testSupabaseHealth(): Promise<SupabaseHealthStatus> {
-  const start = performance.now();
-  const tables = {
-    orders: false,
-    custom_orders: false,
-    feedbacks: false,
-    products: false
-  };
-
-  try {
-    // Quick test against Supabase endpoint
-    const [ordersRes, customRes, feedbacksRes, productsRes] = await Promise.all([
-      supabase.from('orders').select('id').limit(1),
-      supabase.from('custom_orders').select('id').limit(1),
-      supabase.from('feedbacks').select('id').limit(1),
-      supabase.from('products').select('id').limit(1)
-    ]);
-
-    tables.orders = !ordersRes.error;
-    tables.custom_orders = !customRes.error;
-    tables.feedbacks = !feedbacksRes.error;
-    tables.products = !productsRes.error;
-
-    const latencyMs = Math.round(performance.now() - start);
-
-    return {
-      connected: true,
-      url: SUPABASE_URL,
-      latencyMs,
-      message: 'Supabase cloud endpoint reachable and responding.',
-      tables
-    };
-  } catch (error: any) {
-    const latencyMs = Math.round(performance.now() - start);
-    return {
-      connected: false,
-      url: SUPABASE_URL,
-      latencyMs,
-      message: error?.message || 'Failed to ping Supabase.',
-      tables
-    };
-  }
-}
-
-/**
- * Persists an order to Supabase orders table (with fallback).
- */
+// =========================================================
+// ORDERS
+// =========================================================
 
 export function orderFromSupabaseRow(row: any): Order {
   let customer = row.customer;
@@ -241,7 +235,15 @@ export function orderFromSupabaseRow(row: any): Order {
     try {
       shippingAddress = JSON.parse(shippingAddress);
     } catch {
-      shippingAddress = { fullName: '', phone: '', email: '', address: '', city: '', state: '', pincode: '' };
+      shippingAddress = {
+        fullName: '',
+        phone: '',
+        email: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: ''
+      };
     }
   }
 
@@ -254,13 +256,22 @@ export function orderFromSupabaseRow(row: any): Order {
     }
   }
 
+  let statusHistory = row.status_history;
+  if (typeof statusHistory === 'string') {
+    try {
+      statusHistory = JSON.parse(statusHistory);
+    } catch {
+      statusHistory = [];
+    }
+  }
+
   const street =
     shippingAddress?.address ||
     shippingAddress?.addressLine1 ||
     shippingAddress?.street ||
     (typeof shippingAddress === 'string' ? shippingAddress : '');
 
-  const normalizedAddress = {
+  const normalizedAddress: ShippingAddress = {
     fullName: shippingAddress?.fullName || customer?.name || 'Valued Customer',
     phone: shippingAddress?.phone || customer?.phone || '',
     email: shippingAddress?.email || customer?.email || '',
@@ -269,13 +280,13 @@ export function orderFromSupabaseRow(row: any): Order {
     addressLine2: shippingAddress?.addressLine2 || '',
     city: shippingAddress?.city || '',
     state: shippingAddress?.state || '',
-    pincode: shippingAddress?.pincode || '',
+    pincode: shippingAddress?.pincode || ''
   };
 
   const normalizedCustomer = {
     name: customer?.name || shippingAddress?.fullName || 'Valued Customer',
     email: customer?.email || shippingAddress?.email || '',
-    phone: customer?.phone || shippingAddress?.phone || '',
+    phone: customer?.phone || shippingAddress?.phone || ''
   };
 
   const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => ({
@@ -290,6 +301,7 @@ export function orderFromSupabaseRow(row: any): Order {
   return {
     id: String(row.id),
     orderNumber: row.order_number || '',
+    userId: row.user_id || undefined,
     customer: normalizedCustomer,
     shippingAddress: normalizedAddress,
     items: normalizedItems,
@@ -303,64 +315,147 @@ export function orderFromSupabaseRow(row: any): Order {
     paymentStatus: row.payment_status || 'pending',
     razorpayPaymentId: row.razorpay_payment_id || undefined,
     razorpayOrderId: row.razorpay_order_id || undefined,
-    trackingStatus: row.tracking_status || 'preparing',
+    upiTransactionRef: row.upi_transaction_ref || undefined,
+    paymentVerifiedAt: row.payment_verified_at || undefined,
+    trackingStatus: row.tracking_status || 'pending',
     shiprocketTrackingNumber: row.shiprocket_tracking_number || undefined,
     estimatedDeliveryDate: row.estimated_delivery_date || '',
     notes: row.notes || undefined,
-    createdAt: row.created_at || new Date().toISOString()
+    cancellationReason: row.cancellation_reason || undefined,
+    refundStatus: row.refund_status || undefined,
+    refundId: row.refund_id || undefined,
+    statusHistory: Array.isArray(statusHistory) ? statusHistory : undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || undefined
   };
 }
 
 export async function fetchOrdersFromSupabase(): Promise<Order[]> {
+  const { data, error } = await supabase.from('orders').select('*');
+  if (error) throw error;
+  const orders = (data || []).map(orderFromSupabaseRow);
+  return orders.sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+export async function trackOrderViaRpc(
+  orderNumber: string,
+  contact: string
+): Promise<Order | null> {
+  const { data, error } = await supabase.rpc('track_order_secure', {
+    p_order_number: orderNumber,
+    p_contact: contact
+  });
+  if (error || !data) return null;
+  return orderFromSupabaseRow(data);
+}
+
+export async function syncOrderToSupabase(
+  order: Order
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const { data, error } = await supabase
+    const shipping = order.shippingAddress || ({} as any);
+    const streetAddr = shipping.address || shipping.addressLine1 || '';
+
+    const orderRow: Record<string, any> = {
+      id: order.id,
+      order_number: order.orderNumber,
+      user_id: order.userId || null,
+      customer: {
+        name: order.customer?.name || shipping.fullName || 'Valued Customer',
+        email: order.customer?.email || shipping.email || '',
+        phone: order.customer?.phone || shipping.phone || ''
+      },
+      shipping_address: {
+        fullName: shipping.fullName || order.customer?.name || 'Valued Customer',
+        phone: shipping.phone || order.customer?.phone || '',
+        email: shipping.email || order.customer?.email || '',
+        address: streetAddr,
+        addressLine1: streetAddr,
+        addressLine2: shipping.addressLine2 || '',
+        city: shipping.city || '',
+        state: shipping.state || '',
+        pincode: shipping.pincode || ''
+      },
+      items: (order.items ?? []).map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        image:
+          it.image && it.image.startsWith('data:')
+            ? resolveItemImage(it.productId)
+            : resolveItemImage(it.productId, it.image),
+        price: Number(it.price || 0),
+        quantity: Number(it.quantity || 1),
+        color: it.color
+      })),
+      subtotal: Number(order.subtotal ?? 0),
+      discount: Number(order.discount ?? 0),
+      coupon_code: order.couponCode ?? null,
+      shipping_fee: Number(order.shippingFee ?? 0),
+      cod_fee: Number(order.codFee ?? 0),
+      total: Number(order.total ?? 0),
+      payment_method: order.paymentMethod ?? 'cod',
+      payment_status: order.paymentStatus ?? 'pending',
+      razorpay_payment_id: order.razorpayPaymentId ?? null,
+      razorpay_order_id: order.razorpayOrderId ?? null,
+      upi_transaction_ref: order.upiTransactionRef ?? null,
+      tracking_status: order.trackingStatus ?? 'pending',
+      shiprocket_tracking_number: order.shiprocketTrackingNumber ?? null,
+      estimated_delivery_date: order.estimatedDeliveryDate ?? null,
+      notes: order.notes ?? null,
+      status_history: order.statusHistory ?? [],
+      created_at: order.createdAt || new Date().toISOString()
+    };
+
+    const { error } = await supabase
       .from('orders')
-      .select('*');
-    if (error) throw error;
-    const orders = (data || []).map(orderFromSupabaseRow);
-    return orders.sort((a, b) => {
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
+      .upsert(orderRow, { onConflict: 'id' });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
   } catch (err: any) {
-    console.warn('[Supabase] Full select error on orders, falling back to core columns:', err?.message);
-    const { data: fallbackData, error: fallbackErr } = await supabase
-      .from('orders')
-      .select('id, order_number, customer, shipping_address, subtotal, discount, coupon_code, shipping_fee, cod_fee, total, payment_method, payment_status, razorpay_payment_id, razorpay_order_id, tracking_status, shiprocket_tracking_number, estimated_delivery_date, notes, created_at');
-    if (fallbackErr) throw fallbackErr;
-    const orders = (fallbackData || []).map(orderFromSupabaseRow);
-    return orders.sort((a, b) => {
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
+    return { success: false, error: err?.message || 'Unknown Supabase order error' };
   }
 }
 
-export async function fetchCustomOrdersFromSupabase(): Promise<CustomOrderRequest[]> {
-  const { data, error } = await supabase
-    .from('custom_orders')
-    .select('*');
-  if (error) throw error;
-  const list = (data || []).map((row: any) => ({
-    id: String(row.id),
-    customerName: row.customer_name || '',
-    email: row.email || '',
-    phone: row.phone || '',
-    category: row.category || '',
-    colorPreference: row.color_preference || '',
-    size: row.size || '',
-    budget: row.budget || '',
-    deliveryDatePreference: row.delivery_date_preference || '',
-    referenceImageUrl: row.reference_image_url || undefined,
-    message: row.message || '',
-    status: row.status || 'submitted',
-    createdAt: row.created_at || new Date().toISOString()
-  }));
-  return list.sort((a, b) => {
-    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-  });
+export async function updateOrderStatusInSupabase(
+  orderId: string,
+  status: OrderTrackingStatus | string,
+  trackingNo?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const updates: any = {
+      tracking_status: status,
+      updated_at: new Date().toISOString()
+    };
+    if (trackingNo !== undefined) {
+      updates.shiprocket_tracking_number = trackingNo;
+    }
+    const { error } = await supabase
+      .from('orders')
+      .update(updates)
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
 }
 
+// =========================================================
+// PROFILES & ADDRESSES
+// =========================================================
+
 export async function fetchCurrentProfile(): Promise<any | null> {
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
   if (userError || !user) return null;
   const { data, error } = await supabase
     .from('profiles')
@@ -371,608 +466,114 @@ export async function fetchCurrentProfile(): Promise<any | null> {
   return data;
 }
 
-export async function updateCurrentProfile(name: string, phone: string): Promise<void> {
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) throw new Error('No authenticated user');
-  const { error } = await supabase
-    .from('profiles')
-    .upsert({ id: user.id, full_name: name, email: user.email || '', phone, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-  if (error) throw error;
-  const { error: authError } = await supabase.auth.updateUser({ data: { full_name: name, phone } });
-  if (authError) throw authError;
-}
-
-export async function syncOrderToSupabase(
-  order: Order
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const shipping = order.shippingAddress || ({} as any);
-    const streetAddr = shipping.address || shipping.addressLine1 || '';
-
-    const orderRow = {
-      id: order.id,
-      order_number: order.orderNumber,
-
-      customer: {
-        name: order.customer?.name || shipping.fullName || 'Valued Customer',
-        email: order.customer?.email || shipping.email || '',
-        phone: order.customer?.phone || shipping.phone || '',
-      },
-
-      shipping_address: {
-        fullName: shipping.fullName || order.customer?.name || 'Valued Customer',
-        phone: shipping.phone || order.customer?.phone || '',
-        email: shipping.email || order.customer?.email || '',
-        address: streetAddr,
-        addressLine1: streetAddr,
-        addressLine2: shipping.addressLine2 || '',
-        city: shipping.city || '',
-        state: shipping.state || '',
-        pincode: shipping.pincode || '',
-      },
-
-      items: (order.items ?? []).map((it) => ({
-        productId: it.productId,
-        productName: it.productName,
-        // Prevent huge base64 strings from causing PostgreSQL jsonb query timeouts by resolving to standard catalog image
-        image: it.image && it.image.startsWith('data:')
-          ? resolveItemImage(it.productId)
-          : resolveItemImage(it.productId, it.image),
-        price: Number(it.price || 0),
-        quantity: Number(it.quantity || 1),
-        color: it.color
-      })),
-
-      subtotal: Number(order.subtotal ?? 0),
-      discount: Number(order.discount ?? 0),
-      coupon_code: order.couponCode ?? null,
-      shipping_fee: Number(order.shippingFee ?? 0),
-      cod_fee: Number(order.codFee ?? 0),
-      total: Number(order.total ?? 0),
-
-      payment_method: order.paymentMethod ?? 'cod',
-      payment_status: order.paymentStatus ?? 'pending',
-
-      razorpay_payment_id: order.razorpayPaymentId ?? null,
-      razorpay_order_id: order.razorpayOrderId ?? null,
-
-      tracking_status: order.trackingStatus ?? 'preparing',
-      shiprocket_tracking_number: order.shiprocketTrackingNumber ?? null,
-      estimated_delivery_date: order.estimatedDeliveryDate ?? null,
-      notes: order.notes ?? null,
-
-      created_at: order.createdAt || new Date().toISOString(),
-    };
-
-    console.log('[Supabase] Syncing order to database:', order.orderNumber);
-
-    const { error } = await supabase
-      .from('orders')
-      .upsert(orderRow, {
-        onConflict: 'id',
-      });
-
-    if (error) {
-      console.error('[Supabase] ORDER SAVE FAILED:', error.message);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
-    console.log('[Supabase] ORDER SAVED SUCCESSFULLY:', order.orderNumber);
-    return {
-      success: true,
-    };
-  } catch (err: any) {
-    console.error('[Supabase] Unexpected order sync error:', err);
-    return {
-      success: false,
-      error: err?.message || 'Unknown Supabase order error',
-    };
-  }
-}
-
-/**
- * Persists a custom order request to Supabase.
- */
-export async function syncCustomOrderToSupabase(
-  customOrder: CustomOrderRequest
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase.from('custom_orders').upsert({
-      id: customOrder.id,
-      customer_name: customOrder.customerName,
-      email: customOrder.email,
-      phone: customOrder.phone,
-      category: customOrder.category,
-      color_preference: customOrder.colorPreference,
-      size: customOrder.size,
-      budget: customOrder.budget,
-      delivery_date_preference: customOrder.deliveryDatePreference,
-      reference_image_url: customOrder.referenceImageUrl,
-      message: customOrder.message,
-      status: customOrder.status,
-      created_at: customOrder.createdAt
-    });
-
-    if (error) {
-      console.warn('[Supabase] custom_orders sync notice:', error.message);
-      return { success: false, error: error.message };
-    }
-    return { success: true };
-  } catch (err: any) {
-    console.warn('[Supabase] Sync custom order error:', err);
-    return { success: false, error: err?.message };
-  }
-}
-
-/**
- * Persists customer feedback to Supabase.
- */
-export async function syncFeedbackToSupabase(
-  feedback: PurchasedItemFeedback
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-  .from('feedbacks')
-  .upsert(
-    {
-      id: feedback.id,
-      order_id: feedback.orderId,
-      order_number: feedback.orderNumber,
-      product_id: feedback.productId,
-      product_name: feedback.productName,
-      product_image: feedback.productImage,
-      selected_color: feedback.selectedColor,
-      customer_name: feedback.customerName,
-      customer_email: feedback.customerEmail,
-      rating: feedback.rating,
-      headline: feedback.headline,
-      comment: feedback.comment,
-      tags: feedback.tags,
-      photo_url: feedback.photoUrl ?? null,
-      recommend: feedback.recommend,
-      artisan_response: feedback.artisanResponse,
-      created_at: feedback.createdAt
-    },
-    {
-      onConflict: 'id'
-    }
-  );
-
-    if (error) {
-      console.warn('[Supabase] feedbacks sync notice:', error.message);
-      return { success: false, error: error.message };
-    }
-    return { success: true };
-  } catch (err: any) {
-    console.warn('[Supabase] Sync feedback error:', err);
-    return { success: false, error: err?.message };
-  }
-}
-
-/**
- * Ready-to-use PostgreSQL schema script for Supabase SQL Editor.
- */
-export const SUPABASE_SQL_SCHEMA = `-- DreamQueen Atelier Database Schema for Supabase
--- Run this in your Supabase SQL Editor (https://supabase.com/dashboard/project/aosdiqpdpfmozuuogroz/sql)
-
--- 1. Orders Table
-CREATE TABLE IF NOT EXISTS public.orders (
-    id TEXT PRIMARY KEY,
-    order_number TEXT NOT NULL,
-    customer JSONB NOT NULL,
-    shipping_address JSONB NOT NULL,
-    items JSONB NOT NULL,
-    subtotal NUMERIC NOT NULL,
-    discount NUMERIC DEFAULT 0,
-    coupon_code TEXT,
-    shipping_fee NUMERIC DEFAULT 0,
-    cod_fee NUMERIC DEFAULT 0,
-    total NUMERIC NOT NULL,
-    payment_method TEXT NOT NULL,
-    payment_status TEXT NOT NULL,
-    razorpay_payment_id TEXT,
-    razorpay_order_id TEXT,
-    tracking_status TEXT DEFAULT 'preparing',
-    shiprocket_tracking_number TEXT,
-    estimated_delivery_date TEXT,
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
-);
-
--- 2. Custom Orders / Commissions Table
-CREATE TABLE IF NOT EXISTS public.custom_orders (
-    id TEXT PRIMARY KEY,
-    customer_name TEXT NOT NULL,
-    email TEXT,
-    phone TEXT NOT NULL,
-    category TEXT,
-    color_preference TEXT,
-    size TEXT,
-    budget TEXT,
-    delivery_date_preference TEXT,
-    reference_image_url TEXT,
-    message TEXT NOT NULL,
-    status TEXT DEFAULT 'submitted',
-    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
-);
-
--- 3. Purchased Item Feedbacks & Reviews Table
-CREATE TABLE IF NOT EXISTS public.feedbacks (
-    id TEXT PRIMARY KEY,
-    order_id TEXT NOT NULL,
-    order_number TEXT NOT NULL,
-    product_id TEXT NOT NULL,
-    product_name TEXT NOT NULL,
-    product_image TEXT,
-    selected_color JSONB,
-    customer_name TEXT NOT NULL,
-    customer_email TEXT,
-    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    headline TEXT,
-    comment TEXT NOT NULL,
-    tags TEXT[],
-    photo_url TEXT,
-    recommend BOOLEAN DEFAULT true,
-    artisan_response JSONB,
-    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
-);
-
--- 4. Products Table
-CREATE TABLE IF NOT EXISTS public.products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    tagline TEXT,
-    price NUMERIC NOT NULL,
-    original_price NUMERIC,
-    rating NUMERIC DEFAULT 5.0,
-    reviews_count INTEGER DEFAULT 0,
-    category TEXT NOT NULL,
-    images TEXT[],
-    stock INTEGER DEFAULT 10,
-    colors JSONB,
-    description TEXT,
-    yarn_type TEXT,
-    care_instructions TEXT,
-    tags TEXT[],
-    is_best_seller BOOLEAN DEFAULT false,
-    is_new_arrival BOOLEAN DEFAULT false,
-    is_featured BOOLEAN DEFAULT false,
-    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
-);
-
--- Enable public row level security or open access for read/insert
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.custom_orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.feedbacks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-
--- Allow anonymous access for the web storefront
-CREATE POLICY "Allow public read-write orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write custom_orders" ON public.custom_orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write feedbacks" ON public.feedbacks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write products" ON public.products FOR ALL USING (true) WITH CHECK (true);
-
--- Enable Supabase Realtime so all connected devices sync immediately
-ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.custom_orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.feedbacks;
-`;
-
-// =========================================================
-// COUPONS
-// =========================================================
-
-export async function fetchCouponsFromSupabase(): Promise<Coupon[]> {
+export async function fetchUserAddresses(userId: string): Promise<ShippingAddress[]> {
   const { data, error } = await supabase
-    .from('coupons')
+    .from('addresses')
     .select('*')
+    .eq('user_id', userId)
+    .order('is_default', { ascending: false })
     .order('created_at', { ascending: false });
-
-  if (error) throw error;
-
+  if (error) return [];
   return (data || []).map((row: any) => ({
-    code: String(row.code),
-    discountPercent: Number(row.discount_percent || 0),
-    minOrderAmount: Number(row.min_order_amount || 0),
-    maxDiscount:
-      row.max_discount == null
-        ? undefined
-        : Number(row.max_discount),
-    description: row.description || '',
-    isActive: Boolean(row.is_active)
+    id: row.id,
+    label: row.label || 'Home',
+    fullName: row.full_name || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    address: row.address_line1 || '',
+    addressLine1: row.address_line1 || '',
+    addressLine2: row.address_line2 || '',
+    city: row.city || '',
+    state: row.state || '',
+    pincode: row.pincode || '',
+    isDefault: Boolean(row.is_default)
   }));
 }
 
-
-export async function upsertCouponToSupabase(
-  coupon: Coupon
-): Promise<void> {
-  const { error } = await supabase
-    .from('coupons')
-    .upsert(
-      {
-        code: coupon.code.toUpperCase(),
-        discount_percent: coupon.discountPercent,
-        min_order_amount: coupon.minOrderAmount,
-        max_discount: coupon.maxDiscount ?? null,
-        description: coupon.description || '',
-        is_active: coupon.isActive,
-        updated_at: new Date().toISOString()
-      },
-      {
-        onConflict: 'code'
-      }
-    );
-
-  if (error) throw error;
-}
-
-
-export async function deleteCouponFromSupabase(
-  code: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('coupons')
-    .delete()
-    .eq('code', code);
-
-  if (error) throw error;
-}
-
-
-// =========================================================
-// STORE SETTINGS
-// =========================================================
-
-export async function fetchStoreSettingsFromSupabase(): Promise<StoreSettings | null> {
-  const { data, error } = await supabase
-    .from('store_settings')
-    .select('*')
-    .eq('id', 1)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  if (!data) return null;
-
-  return {
-    codEnabled: Boolean(data.cod_enabled),
-    codFee: Number(data.cod_fee || 0),
-    freeShippingThreshold: Number(
-      data.free_shipping_threshold || 0
-    ),
-    standardShippingFee: Number(
-      data.standard_shipping_fee || 0
-    ),
-
-    // These should NOT be stored in frontend-visible settings
-    // as private API credentials.
-    shiprocketApiKey: '',
-
-    supportPhone: data.support_phone || '',
-    supportEmail: data.support_email || '',
-
-    pinterestUrl: data.pinterest_url || '',
-    pinterestHandle: data.pinterest_handle || '',
-
-    upiId: data.upi_id || '',
-    upiPayeeName: data.upi_payee_name || ''
-  };
-}
-
-
-export async function updateStoreSettingsInSupabase(
-  settings: StoreSettings
-): Promise<void> {
-  const { error } = await supabase
-    .from('store_settings')
-    .upsert(
-      {
-        id: 1,
-
-        cod_enabled: settings.codEnabled,
-        cod_fee: settings.codFee,
-        free_shipping_threshold:
-          settings.freeShippingThreshold,
-        standard_shipping_fee:
-          settings.standardShippingFee,
-
-        support_phone: settings.supportPhone,
-        support_email: settings.supportEmail,
-
-        pinterest_url: settings.pinterestUrl,
-        pinterest_handle: settings.pinterestHandle,
-
-        upi_id: settings.upiId,
-        upi_payee_name: settings.upiPayeeName,
-
-        updated_at: new Date().toISOString()
-      },
-      {
-        onConflict: 'id'
-      }
-    );
-
-  if (error) throw error;
-}
-
-
-// =========================================================
-// FEEDBACKS
-// =========================================================
-
-export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedback[]> {
-  const { data, error } = await supabase
-    .from('feedbacks')
-    .select('*');
-
-  if (error) throw error;
-
-  const list = (data || []).map((row: any) => ({
-    id: String(row.id),
-
-    orderId: row.order_id || '',
-    orderNumber: row.order_number || '',
-
-    productId: row.product_id || '',
-    productName: row.product_name || '',
-    productImage: row.product_image || '',
-
-    selectedColor: row.selected_color || {
-      name: 'Original',
-      hex: '#5B3A29'
+export async function upsertUserAddress(
+  userId: string,
+  addr: ShippingAddress
+): Promise<{ address?: ShippingAddress; error?: string }> {
+  const addressId = addr.id || `addr-${Date.now()}`;
+  const street = addr.address || addr.addressLine1 || '';
+  if (addr.isDefault) {
+    await supabase.from('addresses').update({ is_default: false }).eq('user_id', userId);
+  }
+  const { error } = await supabase.from('addresses').upsert(
+    {
+      id: addressId,
+      user_id: userId,
+      label: addr.label || 'Home',
+      full_name: addr.fullName,
+      phone: addr.phone,
+      email: addr.email || '',
+      address_line1: street,
+      address_line2: addr.addressLine2 || '',
+      city: addr.city,
+      state: addr.state,
+      pincode: addr.pincode,
+      is_default: Boolean(addr.isDefault),
+      updated_at: new Date().toISOString()
     },
+    { onConflict: 'id' }
+  );
+  if (error) return { error: error.message };
+  return { address: { ...addr, id: addressId, address: street, addressLine1: street } };
+}
 
-    customerName: row.customer_name || '',
-    customerEmail: row.customer_email || '',
+export async function deleteUserAddress(userId: string, addressId: string): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from('addresses')
+    .delete()
+    .eq('id', addressId)
+    .eq('user_id', userId);
+  if (error) return { error: error.message };
+  return {};
+}
 
-    rating: Number(row.rating || 5),
-    headline: row.headline || '',
-    comment: row.comment || '',
+export async function updateCurrentProfile(
+  name: string,
+  phone: string,
+  extra?: { savedAddresses?: ShippingAddress[]; wishlistProductIds?: string[] }
+): Promise<{ error?: string }> {
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+  if (userError || !user) return { error: 'Not authenticated' };
 
-    tags: Array.isArray(row.tags)
-      ? row.tags
-      : [],
+  const payload: Record<string, any> = {
+    id: user.id,
+    full_name: name,
+    email: user.email || '',
+    phone,
+    updated_at: new Date().toISOString()
+  };
+  if (extra?.savedAddresses !== undefined) {
+    payload.saved_addresses = extra.savedAddresses;
+  }
+  if (extra?.wishlistProductIds !== undefined) {
+    payload.wishlist_product_ids = extra.wishlistProductIds;
+  }
 
-    photoUrl: row.photo_url || undefined,
-    recommend: row.recommend === null ? true : Boolean(row.recommend),
-    artisanResponse: row.artisan_response || undefined,
-    createdAt: row.created_at || new Date().toISOString()
-  }));
+  const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+  if (error) return { error: error.message };
 
-  return list.sort((a, b) => {
-    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  const { error: authError } = await supabase.auth.updateUser({
+    data: { full_name: name, phone }
   });
+  if (authError) return { error: authError.message };
+  return {};
 }
 
 // =========================================================
-// COMPATIBILITY & AUTHENTICATION HELPERS
-// =========================================================
-
-export async function syncProductToSupabase(product: Product): Promise<{ success: boolean; error?: string }> {
-  try {
-    await upsertProductToSupabase(product);
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message };
-  }
-}
-
-export async function updateOrderStatusInSupabase(
-  orderId: string,
-  status: OrderTrackingStatus | string,
-  trackingNo?: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const updates: any = { tracking_status: status };
-    if (trackingNo) {
-      updates.shiprocket_tracking_number = trackingNo;
-    }
-    const { error } = await supabase
-      .from('orders')
-      .update(updates)
-      .or(`id.eq.${orderId},order_number.eq.${orderId}`);
-    if (error) {
-      console.warn('[Supabase] updateOrderStatus notice:', error.message);
-      return { success: false, error: error.message };
-    }
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message };
-  }
-}
-
-export async function updateCustomOrderStatusInSupabase(
-  id: string,
-  status: CustomOrderRequest['status']
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from('custom_orders')
-      .update({ status })
-      .eq('id', id);
-    if (error) {
-      return { success: false, error: error.message };
-    }
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message };
-  }
-}
-
-export async function signUpWithSupabase(data: {
-  name: string;
-  email: string;
-  phone: string;
-  password?: string;
-}): Promise<{ user?: any; error?: string }> {
-  try {
-    const password = data.password || 'crochet123';
-    const { data: authData, error } = await supabase.auth.signUp({
-      email: data.email,
-      password,
-      options: {
-        data: {
-          full_name: data.name,
-          phone: data.phone
-        }
-      }
-    });
-    if (error) {
-      return { error: error.message };
-    }
-    return { user: authData.user };
-  } catch (err: any) {
-    return { error: err?.message || 'Signup failed' };
-  }
-}
-
-export async function signInWithSupabase(
-  email: string,
-  password: string
-): Promise<{ user?: any; error?: string }> {
-  try {
-    const { data: authData, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    if (error) {
-      return { error: error.message };
-    }
-    return { user: authData.user };
-  } catch (err: any) {
-    return { error: err?.message || 'Login failed' };
-  }
-}
-
-export async function signOutSupabase(): Promise<void> {
-  try {
-    await supabase.auth.signOut();
-  } catch (err) {
-    console.warn('Sign out error:', err);
-  }
-}
-
-export async function getSupabaseSessionUser(): Promise<any | null> {
-  try {
-    const { data } = await supabase.auth.getUser();
-    return data.user || null;
-  } catch {
-    return null;
-  }
-}
-
-// =========================================================
-// REALTIME CROSS-DEVICE SYNCHRONIZATION
+// CUSTOM ORDERS
 // =========================================================
 
 export function customOrderFromSupabaseRow(row: any): CustomOrderRequest {
   return {
     id: String(row.id),
+    userId: row.user_id || undefined,
     customerName: row.customer_name || '',
     email: row.email || '',
     phone: row.phone || '',
@@ -984,9 +585,74 @@ export function customOrderFromSupabaseRow(row: any): CustomOrderRequest {
     referenceImageUrl: row.reference_image_url || undefined,
     message: row.message || '',
     status: row.status || 'submitted',
+    quotedPrice: row.quoted_price === null || row.quoted_price === undefined ? undefined : Number(row.quoted_price),
+    adminNotes: row.admin_notes || undefined,
     createdAt: row.created_at || new Date().toISOString()
   };
 }
+
+export async function fetchCustomOrdersFromSupabase(): Promise<CustomOrderRequest[]> {
+  const { data, error } = await supabase.from('custom_orders').select('*');
+  if (error) throw error;
+  const list = (data || []).map(customOrderFromSupabaseRow);
+  return list.sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+export async function syncCustomOrderToSupabase(
+  customOrder: CustomOrderRequest
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('custom_orders').upsert({
+      id: customOrder.id,
+      user_id: customOrder.userId || null,
+      customer_name: customOrder.customerName,
+      email: customOrder.email,
+      phone: customOrder.phone,
+      category: customOrder.category,
+      color_preference: customOrder.colorPreference,
+      size: customOrder.size,
+      budget: customOrder.budget,
+      delivery_date_preference: customOrder.deliveryDatePreference,
+      reference_image_url: customOrder.referenceImageUrl,
+      message: customOrder.message,
+      status: customOrder.status,
+      quoted_price: customOrder.quotedPrice ?? null,
+      admin_notes: customOrder.adminNotes ?? null,
+      created_at: customOrder.createdAt
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function updateCustomOrderInSupabase(
+  id: string,
+  updates: { status: CustomOrderRequest['status']; quotedPrice?: number; adminNotes?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('custom_orders')
+      .update({
+        status: updates.status,
+        quoted_price: updates.quotedPrice ?? null,
+        admin_notes: updates.adminNotes ?? null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+// =========================================================
+// FEEDBACKS / REVIEWS
+// =========================================================
 
 export function feedbackFromSupabaseRow(row: any): PurchasedItemFeedback {
   let selectedColor = row.selected_color;
@@ -1009,6 +675,7 @@ export function feedbackFromSupabaseRow(row: any): PurchasedItemFeedback {
 
   return {
     id: String(row.id),
+    userId: row.user_id || undefined,
     orderId: row.order_id || '',
     orderNumber: row.order_number || '',
     productId: row.product_id || '',
@@ -1023,35 +690,303 @@ export function feedbackFromSupabaseRow(row: any): PurchasedItemFeedback {
     tags: Array.isArray(row.tags) ? row.tags : [],
     photoUrl: row.photo_url || undefined,
     recommend: row.recommend === null ? true : Boolean(row.recommend),
+    isVerifiedPurchase:
+      row.is_verified_purchase === undefined ? true : Boolean(row.is_verified_purchase),
+    isApproved: row.is_approved === undefined ? true : Boolean(row.is_approved),
     artisanResponse: artisanResponse || undefined,
     createdAt: row.created_at || new Date().toISOString()
   };
 }
+
+export async function fetchFeedbacksFromSupabase(): Promise<PurchasedItemFeedback[]> {
+  const { data, error } = await supabase.from('feedbacks').select('*');
+  if (error) throw error;
+  const list = (data || []).map(feedbackFromSupabaseRow);
+  return list.sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+export async function syncFeedbackToSupabase(
+  feedback: PurchasedItemFeedback
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('feedbacks').upsert(
+      {
+        id: feedback.id,
+        user_id: feedback.userId || null,
+        order_id: feedback.orderId,
+        order_number: feedback.orderNumber,
+        product_id: feedback.productId,
+        product_name: feedback.productName,
+        product_image: feedback.productImage,
+        selected_color: feedback.selectedColor,
+        customer_name: feedback.customerName,
+        customer_email: feedback.customerEmail,
+        rating: feedback.rating,
+        headline: feedback.headline,
+        comment: feedback.comment,
+        tags: feedback.tags,
+        photo_url: feedback.photoUrl ?? null,
+        recommend: feedback.recommend,
+        is_verified_purchase: feedback.isVerifiedPurchase ?? true,
+        is_approved: feedback.isApproved ?? true,
+        artisan_response: feedback.artisanResponse ?? null,
+        created_at: feedback.createdAt
+      },
+      { onConflict: 'id' }
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function deleteFeedbackFromSupabase(id: string): Promise<{ error?: string }> {
+  const { error } = await supabase.from('feedbacks').delete().eq('id', id);
+  if (error) return { error: error.message };
+  return {};
+}
+
+// =========================================================
+// COUPONS & STORE SETTINGS
+// =========================================================
+
+export async function fetchCouponsFromSupabase(): Promise<Coupon[]> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    code: String(row.code),
+    discountPercent: Number(row.discount_percent || 0),
+    minOrderAmount: Number(row.min_order_amount || 0),
+    maxDiscount: row.max_discount == null ? undefined : Number(row.max_discount),
+    description: row.description || '',
+    isActive: Boolean(row.is_active),
+    expiresAt: row.expires_at || undefined,
+    maxUses: row.max_uses == null ? undefined : Number(row.max_uses),
+    usedCount: row.used_count == null ? 0 : Number(row.used_count)
+  }));
+}
+
+export async function upsertCouponToSupabase(coupon: Coupon): Promise<void> {
+  const { error } = await supabase.from('coupons').upsert(
+    {
+      code: coupon.code.toUpperCase(),
+      discount_percent: coupon.discountPercent,
+      min_order_amount: coupon.minOrderAmount,
+      max_discount: coupon.maxDiscount ?? null,
+      description: coupon.description || '',
+      is_active: coupon.isActive,
+      expires_at: coupon.expiresAt ?? null,
+      max_uses: coupon.maxUses ?? null,
+      used_count: coupon.usedCount ?? 0,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'code' }
+  );
+  if (error) throw error;
+}
+
+export async function deleteCouponFromSupabase(code: string): Promise<void> {
+  const { error } = await supabase.from('coupons').delete().eq('code', code);
+  if (error) throw error;
+}
+
+export async function fetchStoreSettingsFromSupabase(): Promise<StoreSettings | null> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    codEnabled: Boolean(data.cod_enabled),
+    codFee: Number(data.cod_fee ?? DEFAULT_STORE_SETTINGS.codFee),
+    freeShippingThreshold: Number(
+      data.free_shipping_threshold ?? DEFAULT_STORE_SETTINGS.freeShippingThreshold
+    ),
+    standardShippingFee: Number(
+      data.standard_shipping_fee ?? DEFAULT_STORE_SETTINGS.standardShippingFee
+    ),
+    shiprocketApiKey: '',
+    supportPhone: data.support_phone || DEFAULT_STORE_SETTINGS.supportPhone,
+    supportEmail: data.support_email || DEFAULT_STORE_SETTINGS.supportEmail,
+    pinterestUrl: data.pinterest_url || DEFAULT_STORE_SETTINGS.pinterestUrl,
+    pinterestHandle: data.pinterest_handle || DEFAULT_STORE_SETTINGS.pinterestHandle,
+    upiId: data.upi_id || DEFAULT_STORE_SETTINGS.upiId,
+    upiPayeeName: data.upi_payee_name || DEFAULT_STORE_SETTINGS.upiPayeeName,
+    studioAddress: data.studio_address || DEFAULT_STORE_SETTINGS.studioAddress
+  };
+}
+
+export async function updateStoreSettingsInSupabase(settings: StoreSettings): Promise<void> {
+  const { error } = await supabase.from('store_settings').upsert(
+    {
+      id: 1,
+      cod_enabled: settings.codEnabled,
+      cod_fee: settings.codFee,
+      free_shipping_threshold: settings.freeShippingThreshold,
+      standard_shipping_fee: settings.standardShippingFee,
+      support_phone: settings.supportPhone,
+      support_email: settings.supportEmail,
+      pinterest_url: settings.pinterestUrl,
+      pinterest_handle: settings.pinterestHandle,
+      upi_id: settings.upiId,
+      upi_payee_name: settings.upiPayeeName,
+      studio_address: settings.studioAddress || DEFAULT_STORE_SETTINGS.studioAddress,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'id' }
+  );
+  if (error) throw error;
+}
+
+// =========================================================
+// REAL AUTHENTICATION HELPERS (Single Source of Truth)
+// =========================================================
+
+export async function signUpWithSupabase(data: {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+}): Promise<{
+  user?: any;
+  session?: any;
+  requiresEmailVerification?: boolean;
+  error?: string;
+}> {
+  try {
+    const { data: authData, error } = await supabase.auth.signUp({
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+      options: {
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        data: {
+          full_name: data.name.trim(),
+          phone: data.phone.trim()
+        }
+      }
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    // Supabase returns empty identities array if the email already exists (when email enum protection is enabled)
+    if (authData.user && Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
+      return {
+        error: 'An account with this email already exists. Please sign in or use Forgot Password.'
+      };
+    }
+
+    const requiresEmailVerification = Boolean(authData.user && !authData.session);
+    return {
+      user: authData.user,
+      session: authData.session,
+      requiresEmailVerification
+    };
+  } catch (err: any) {
+    return { error: err?.message || 'Registration failed. Please try again.' };
+  }
+}
+
+export async function signInWithSupabase(
+  email: string,
+  password: string
+): Promise<{ user?: any; session?: any; error?: string }> {
+  try {
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return { user: authData.user, session: authData.session };
+  } catch (err: any) {
+    return { error: err?.message || 'Sign in failed. Please check your credentials.' };
+  }
+}
+
+export async function sendPasswordResetEmail(
+  email: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to send password reset email.' };
+  }
+}
+
+export async function updateUserPassword(
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to update password.' };
+  }
+}
+
+export async function resendVerificationEmail(
+  email: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase()
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Could not resend verification email.' };
+  }
+}
+
+export async function signOutSupabase(): Promise<void> {
+  await supabase.auth.signOut();
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
+}
+
+// =========================================================
+// REALTIME CROSS-DEVICE SYNCHRONIZATION
+// =========================================================
 
 export interface RealtimeSyncHandlers {
   onProductChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
   onOrderChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
   onCustomOrderChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
   onFeedbackChange?: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void;
+  onCouponChange?: () => void;
+  onSettingsChange?: () => void;
 }
 
 export function subscribeToRealtimeUpdates(handlers: RealtimeSyncHandlers) {
   const channel = supabase
     .channel('dreamqueen-cross-device-sync')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'products' },
-      (payload) => {
-        handlers.onProductChange?.(payload.eventType as any, payload);
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'orders' },
-      (payload) => {
-        handlers.onOrderChange?.(payload.eventType as any, payload);
-      }
-    )
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
+      handlers.onProductChange?.(payload.eventType as any, payload);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+      handlers.onOrderChange?.(payload.eventType as any, payload);
+    })
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'custom_orders' },
@@ -1059,25 +994,22 @@ export function subscribeToRealtimeUpdates(handlers: RealtimeSyncHandlers) {
         handlers.onCustomOrderChange?.(payload.eventType as any, payload);
       }
     )
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'feedbacks' }, (payload) => {
+      handlers.onFeedbackChange?.(payload.eventType as any, payload);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, () => {
+      handlers.onCouponChange?.();
+    })
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'feedbacks' },
-      (payload) => {
-        handlers.onFeedbackChange?.(payload.eventType as any, payload);
+      { event: '*', schema: 'public', table: 'store_settings' },
+      () => {
+        handlers.onSettingsChange?.();
       }
     )
-    .subscribe((status, err) => {
-      if (err) {
-        console.warn('[Supabase Realtime] Sync subscription notice:', err);
-      } else if (status === 'SUBSCRIBED') {
-        console.log('[Supabase Realtime] Live cross-device sync active 🌸');
-      }
-    });
+    .subscribe();
 
   return () => {
     supabase.removeChannel(channel);
   };
 }
-
-
-

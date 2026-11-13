@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, Download, Smartphone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
+import { Copy, Check, Download, Smartphone } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 interface UpiQrCardProps {
@@ -15,27 +16,50 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
   className = '',
   showActions = true
 }) => {
-  const { showToast } = useStore();
+  const { showToast, storeSettings } = useStore();
   const [copied, setCopied] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-  const payeeVpa = '8097706536@postbank';
-  const payeeName = 'AYESHA LUKMAN SHAIKH';
+  const payeeVpa = storeSettings.upiId || '8097706536@postbank';
+  const payeeName = storeSettings.upiPayeeName || 'AYESHA LUKMAN SHAIKH';
 
-  // Construct UPI deep-link intent
   const upiUrl = amount
-    ? `upi://pay?pa=${payeeVpa}&pn=${encodeURIComponent(payeeName)}&am=${amount.toFixed(
+    ? `upi://pay?pa=${encodeURIComponent(payeeVpa)}&pn=${encodeURIComponent(payeeName)}&am=${amount.toFixed(
         2
-      )}&cu=INR${orderNumber ? `&tn=DreamQueen%20Order%20${orderNumber}` : ''}`
-    : `upi://pay?pa=${payeeVpa}&pn=${encodeURIComponent(payeeName)}&cu=INR`;
+      )}&cu=INR${orderNumber ? `&tn=${encodeURIComponent(`DreamQueen Order ${orderNumber}`)}` : ''}`
+    : `upi://pay?pa=${encodeURIComponent(payeeVpa)}&pn=${encodeURIComponent(payeeName)}&cu=INR`;
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(upiUrl, {
+      width: 280,
+      margin: 2,
+      color: {
+        dark: '#2E2E2E',
+        light: '#FFFFFF'
+      },
+      errorCorrectionLevel: 'M'
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl('');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [upiUrl]);
 
   const handleCopyVpa = async () => {
     try {
       await navigator.clipboard.writeText(payeeVpa);
       setCopied(true);
-      showToast('UPI ID 8097706536@postbank copied to clipboard! ✨', 'success');
+      showToast(`UPI ID ${payeeVpa} copied to clipboard`, 'success');
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      showToast('Copied: 8097706536@postbank');
+      showToast(`UPI ID: ${payeeVpa}`);
     }
   };
 
@@ -45,7 +69,6 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
     >
       {/* India Post Payments Bank Header */}
       <div className="w-full flex items-center justify-center gap-3 pb-3 border-b border-[#F5EBE1]">
-        {/* Red circle stamp with yellow speed waves */}
         <div className="relative w-11 h-11 shrink-0 flex items-center justify-center">
           <div className="w-9 h-11 bg-[#B72832] rounded-full flex items-center justify-center relative shadow-2xs">
             <svg
@@ -69,7 +92,6 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
           </div>
         </div>
 
-        {/* Bilingual IPPB text */}
         <div className="text-left flex items-center gap-2">
           <div>
             <div className="text-xs font-black text-[#8B2332] tracking-tight leading-tight">
@@ -92,31 +114,34 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
       {/* Subtitle */}
       <div className="py-2.5">
         <h4 className="text-xs sm:text-sm font-semibold text-[#424242] tracking-wide">
-          Scan this QR Code
+          {orderNumber ? `Pay for Order ${orderNumber}` : 'Scan this QR Code'}
         </h4>
         {amount ? (
-          <div className="mt-1 px-3 py-1 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] inline-block text-xs font-bold text-[#5B3A29]">
+          <div className="mt-1 px-3 py-1 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] inline-block text-xs font-bold font-price text-[#5B3A29]">
             Amount to Pay: ₹{amount}
           </div>
         ) : (
-          <span className="text-[11px] text-[#8C7A6B]">
+          <span className="text-[11px] text-[#6E6863]">
             Works with Google Pay, PhonePe, Paytm & any UPI app
           </span>
         )}
       </div>
 
-      {/* Real High-Resolution Scannable QR Matrix */}
+      {/* Dynamic Order-Specific QR Code */}
       <div className="p-3 bg-white rounded-2xl border border-[#EAD5C5] shadow-inner my-1 relative group">
-        <img
-          src="/upi-qr-matrix.png"
-          alt="UPI QR Scanner for Ayesha Lukman Shaikh"
-          className="w-56 h-56 object-contain rounded-lg"
-        />
-        <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition rounded-2xl pointer-events-none flex items-center justify-center">
-          <span className="bg-white/95 px-3 py-1 rounded-full text-[10px] font-bold text-[#5B3A29] shadow-xs">
-            Scan to Pay ₹{amount || ''}
-          </span>
-        </div>
+        {qrDataUrl ? (
+          <img
+            src={qrDataUrl}
+            alt={`UPI QR Code for ${payeeName}${amount ? ` - ₹${amount}` : ''}`}
+            className="w-52 h-52 object-contain rounded-lg"
+          />
+        ) : (
+          <img
+            src="/upi-qr-matrix.png"
+            alt={`UPI QR Scanner for ${payeeName}`}
+            className="w-52 h-52 object-contain rounded-lg"
+          />
+        )}
       </div>
 
       {/* Payee Info */}
@@ -131,7 +156,7 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
 
       {/* Powered by UPI */}
       <div className="pt-3 pb-1 flex flex-col items-center">
-        <span className="text-[8px] font-bold text-[#8C8587] tracking-widest uppercase">
+        <span className="text-[8px] font-bold text-[#6E6863] tracking-widest uppercase">
           POWERED BY
         </span>
         <div className="flex items-center gap-1 mt-0.5">
@@ -143,7 +168,6 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
         </div>
       </div>
 
-      {/* Quick Action Buttons */}
       {showActions && (
         <div className="w-full pt-3 mt-2 border-t border-[#F5EBE1] grid grid-cols-2 gap-2 text-xs">
           <button
@@ -154,7 +178,7 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
             {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 text-[#708238]" />
-                <span className="text-[#708238]">Copied!</span>
+                <span className="text-[#708238]">Copied</span>
               </>
             ) : (
               <>
@@ -173,12 +197,12 @@ export const UpiQrCard: React.FC<UpiQrCardProps> = ({
           </a>
 
           <a
-            href="/upi-scanner.svg"
-            download="dreamqueen-upi-scanner.svg"
-            className="col-span-2 py-1.5 rounded-lg text-[11px] text-[#8C7A6B] hover:text-[#5B3A29] flex items-center justify-center gap-1 hover:underline transition"
+            href={qrDataUrl || '/upi-scanner.svg'}
+            download={orderNumber ? `dreamqueen-upi-${orderNumber}.png` : 'dreamqueen-upi-qr.png'}
+            className="col-span-2 py-1.5 rounded-lg text-[11px] text-[#6E6863] hover:text-[#5B3A29] flex items-center justify-center gap-1 hover:underline transition"
           >
             <Download className="w-3 h-3" />
-            <span>Save / Download Full Scanner Card</span>
+            <span>Download QR Code</span>
           </a>
         </div>
       )}

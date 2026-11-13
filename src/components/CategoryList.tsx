@@ -58,7 +58,7 @@ const CATEGORIES: CategoryItem[] = [
 ];
 
 export const CategoryList: React.FC = () => {
-  const { setActiveTab } = useStore();
+  const { setActiveTab, setSelectedShopCategory } = useStore();
 
   return (
     <section className="py-14 bg-[#FFF8F0]/70 border-y border-[#EAD5C5]/40">
@@ -87,6 +87,7 @@ export const CategoryList: React.FC = () => {
                 if (cat.id === 'Custom Orders') {
                   setActiveTab('custom');
                 } else {
+                  setSelectedShopCategory(cat.id);
                   setActiveTab('shop');
                 }
                 window.scrollTo({ top: 0, behavior: 'smooth' });

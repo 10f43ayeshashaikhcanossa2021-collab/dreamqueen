@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type {
   Product,
   CartItem,
   Order,
@@ -9,7 +9,10 @@ import {
   CustomOrderRequest,
   StoreSettings,
   OrderTrackingStatus,
-  PurchasedItemFeedback
+  PurchasedItemFeedback,
+  ShippingAddress,
+  PaymentMethod,
+  AppTab
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -19,6 +22,12 @@ import {
 } from '../data/initialProducts';
 import { resolveItemImage } from '../utils/imageHelper';
 import {
+  DEFAULT_STORE_SETTINGS,
+  validateCouponRule,
+  normalizeIndianPhone
+} from '../utils/pricing';
+import {
+  supabase,
   syncOrderToSupabase,
   syncCustomOrderToSupabase,
   syncFeedbackToSupabase,
@@ -26,14 +35,28 @@ import {
   fetchOrdersFromSupabase,
   fetchCustomOrdersFromSupabase,
   fetchFeedbacksFromSupabase,
+  fetchCouponsFromSupabase,
   fetchStoreSettingsFromSupabase,
   syncProductToSupabase,
   deleteProductFromSupabase,
   updateOrderStatusInSupabase,
-  updateCustomOrderStatusInSupabase,
+  updateCustomOrderInSupabase,
+  deleteFeedbackFromSupabase,
+  upsertCouponToSupabase,
+  deleteCouponFromSupabase,
+  updateStoreSettingsInSupabase,
+  fetchCurrentProfile,
+  fetchUserAddresses,
+  upsertUserAddress,
+  deleteUserAddress,
+  updateCurrentProfile,
   signUpWithSupabase,
   signInWithSupabase,
+  sendPasswordResetEmail,
+  updateUserPassword,
+  resendVerificationEmail,
   signOutSupabase,
+  getAccessToken,
   subscribeToRealtimeUpdates,
   productFromSupabaseRow,
   orderFromSupabaseRow,
@@ -47,12 +70,31 @@ interface ToastInfo {
   type: 'success' | 'info' | 'error';
 }
 
+export interface AuthActionResult {
+  success: boolean;
+  error?: string;
+  requiresEmailVerification?: boolean;
+}
+
+export interface PlaceOrderInput {
+  shippingAddress: ShippingAddress;
+  paymentMethod: PaymentMethod;
+  notes?: string;
+  idempotencyKey?: string;
+}
+
+export interface PlaceOrderResult {
+  order?: Order;
+  error?: string;
+}
+
 interface StoreContextType {
   products: Product[];
-  addProduct: (product: Omit<Product, 'id'>) => void;
-  updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  updateProductStock: (id: string, delta: number) => void;
+  activeProducts: Product[];
+  addProduct: (product: Omit<Product, 'id'>) => Promise<void>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  updateProductStock: (id: string, delta: number) => Promise<void>;
 
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number, colorIndex?: number) => void;
@@ -67,44 +109,76 @@ interface StoreContextType {
   isInWishlist: (productId: string) => boolean;
 
   orders: Order[];
-  createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => Order;
-  updateOrderStatus: (orderId: string, status: OrderTrackingStatus, trackingNo?: string) => void;
+  placeServerOrder: (input: PlaceOrderInput) => Promise<PlaceOrderResult>;
+  refreshOrderAfterGateway: (updatedOrderRow: any) => void;
+  submitUpiUtr: (orderId: string, utr: string) => Promise<{ success: boolean; error?: string }>;
+  verifyOrderPaymentAdmin: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  refundOrderAdmin: (orderId: string) => Promise<{ success: boolean; refundStatus?: string; error?: string }>;
+  cancelUserOrder: (orderId: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  updateOrderStatus: (
+    orderId: string,
+    status: OrderTrackingStatus,
+    trackingNo?: string,
+    cancellationReason?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   getOrderByIdOrNumber: (query: string) => Order | undefined;
 
   coupons: Coupon[];
   activeCoupon: Coupon | null;
   applyCoupon: (code: string) => { success: boolean; message: string };
   removeCoupon: () => void;
-  addCoupon: (coupon: Coupon) => void;
-  deleteCoupon: (code: string) => void;
+  addCoupon: (coupon: Coupon) => Promise<void>;
+  updateCoupon: (coupon: Coupon) => Promise<void>;
+  deleteCoupon: (code: string) => Promise<void>;
 
   customOrders: CustomOrderRequest[];
-  submitCustomOrder: (request: Omit<CustomOrderRequest, 'id' | 'status' | 'createdAt'>) => void;
-  updateCustomOrderStatus: (id: string, status: CustomOrderRequest['status']) => void;
+  submitCustomOrder: (request: Omit<CustomOrderRequest, 'id' | 'status' | 'createdAt'>) => Promise<void>;
+  updateCustomOrderStatus: (
+    id: string,
+    status: CustomOrderRequest['status'],
+    extra?: { quotedPrice?: number; adminNotes?: string }
+  ) => Promise<void>;
 
   feedbacks: PurchasedItemFeedback[];
-  submitFeedback: (feedback: Omit<PurchasedItemFeedback, 'id' | 'createdAt'>) => void;
+  submitFeedback: (feedback: Omit<PurchasedItemFeedback, 'id' | 'createdAt'>) => Promise<void>;
   getFeedbackForOrderItem: (orderNumber: string, productId: string) => PurchasedItemFeedback | undefined;
-  replyToFeedback: (feedbackId: string, replyText: string) => void;
+  replyToFeedback: (feedbackId: string, replyText: string) => Promise<void>;
+  toggleFeedbackApproval: (feedbackId: string, isApproved: boolean) => Promise<void>;
+  deleteFeedback: (feedbackId: string) => Promise<void>;
   activeFeedbackTarget: { order: Order; item: OrderItem } | null;
   setActiveFeedbackTarget: (val: { order: Order; item: OrderItem } | null) => void;
 
   storeSettings: StoreSettings;
-  updateStoreSettings: (settings: Partial<StoreSettings>) => void;
+  updateStoreSettings: (settings: Partial<StoreSettings>) => Promise<void>;
 
   currentUser: User | null;
+  isAuthLoading: boolean;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (val: boolean) => void;
+  isPasswordRecoveryMode: boolean;
+  setIsPasswordRecoveryMode: (val: boolean) => void;
   authModalIntent: 'checkout' | 'general' | 'custom_order';
   setAuthModalIntent: (val: 'checkout' | 'general' | 'custom_order') => void;
   openAuthModal: (intent?: 'checkout' | 'general' | 'custom_order') => void;
-  registerUser: (data: { name: string; email: string; phone: string; password?: string }) => boolean;
-  loginUser: (identifier: string, passwordOrName?: string) => boolean;
-  logoutUser: () => void;
-  updateUserProfile: (name: string, phone: string) => void;
+  registerUser: (data: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+  }) => Promise<AuthActionResult>;
+  loginUser: (email: string, password: string) => Promise<AuthActionResult>;
+  requestPasswordReset: (email: string) => Promise<AuthActionResult>;
+  completePasswordReset: (newPassword: string) => Promise<AuthActionResult>;
+  resendVerification: (email: string) => Promise<AuthActionResult>;
+  logoutUser: () => Promise<void>;
+  updateUserProfile: (name: string, phone: string) => Promise<{ error?: string }>;
+  saveUserAddress: (address: ShippingAddress) => Promise<{ address?: ShippingAddress; error?: string }>;
+  removeUserAddress: (addressId: string) => Promise<{ error?: string }>;
 
-  activeTab: 'home' | 'shop' | 'custom' | 'customer' | 'contact';
-  setActiveTab: (tab: 'home' | 'shop' | 'custom' | 'customer' | 'contact') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
+  selectedShopCategory: string;
+  setSelectedShopCategory: (category: string) => void;
 
   selectedProduct: Product | null;
   setSelectedProduct: (product: Product | null) => void;
@@ -130,58 +204,33 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const DEFAULT_SETTINGS: StoreSettings = {
-  codEnabled: true,
-  codFee: 10,
-  freeShippingThreshold: 499,
-  standardShippingFee: 20,
-  shiprocketApiKey: 'sr_live_demo_984180410',
-  supportPhone: '8097706536',
-  supportEmail: 'ayeshalk2025@gmail.com',
-  pinterestUrl: 'https://in.pinterest.com/ayeshalk2025/?actingBusinessId=1147221842487308120',
-  pinterestHandle: 'ayeshalk2025',
-  upiId: '8097706536@postbank',
-  upiPayeeName: 'AYESHA LUKMAN SHAIKH'
-};
-
-const DEFAULT_USER: User = {
-  id: 'usr-1',
-  name: 'Aanya Sharma',
-  email: 'aanya@example.com',
-  phone: '8097706536',
-  role: 'customer',
-  savedAddresses: [
-    {
-      fullName: 'Aanya Sharma',
-      phone: '8097706536',
-      email: 'aanya@example.com',
-      address: 'Flat 402, Blossom Heights, Bandra West',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincode: '400050'
-    }
-  ],
-  wishlistProductIds: ['prod-rose-hair-tie', 'prod-lavender-bouquet']
-};
+function isValidCatalogImage(img?: string): boolean {
+  if (!img) return false;
+  return (
+    img.startsWith('/assets/aistudio/') ||
+    img.startsWith('/images/') ||
+    img.startsWith('https://') ||
+    img.startsWith('http://')
+  );
+}
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('dreamqueen_products_v7');
+      const saved = localStorage.getItem('dreamqueen_products_catalog_v1');
       if (saved) {
         const parsed: Product[] = JSON.parse(saved);
         if (
           Array.isArray(parsed) &&
-          parsed.length === INITIAL_PRODUCTS.length &&
-          parsed.every((p) => p.images?.[0]?.startsWith('/assets/aistudio/'))
+          parsed.length > 0 &&
+          parsed.every((p) => p.id && p.images?.some(isValidCatalogImage))
         ) {
           return parsed;
         }
       }
-      localStorage.setItem('dreamqueen_products_v7', JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
+      return INITIAL_PRODUCTS.map((p) => ({ ...p, isActive: p.isActive ?? true }));
     } catch {
-      return INITIAL_PRODUCTS;
+      return INITIAL_PRODUCTS.map((p) => ({ ...p, isActive: p.isActive ?? true }));
     }
   });
 
@@ -190,9 +239,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('dreamqueen_cart');
       if (saved) {
         const parsed: CartItem[] = JSON.parse(saved);
-        const validIds = new Set(INITIAL_PRODUCTS.map((p) => p.id));
-        return (Array.isArray(parsed) ? parsed : []).filter((item) =>
-          validIds.has(item.product?.id)
+        return (Array.isArray(parsed) ? parsed : []).filter(
+          (item) => item?.product?.id && Number(item.quantity) > 0
         );
       }
       return [];
@@ -206,27 +254,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('dreamqueen_wishlist');
       if (saved) {
         const parsed: string[] = JSON.parse(saved);
-        const validIds = new Set(INITIAL_PRODUCTS.map((p) => p.id));
-        const filtered = (Array.isArray(parsed) ? parsed : []).filter((id) => validIds.has(id));
-        if (filtered.length > 0) return filtered;
+        if (Array.isArray(parsed)) return parsed;
       }
-      return ['prod-heart-hair-clips', 'prod-rose-crochet-bag'];
+      return [];
     } catch {
-      return ['prod-heart-hair-clips', 'prod-rose-crochet-bag'];
+      return [];
     }
   });
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
-      const saved = localStorage.getItem('dreamqueen_orders');
-      const list: Order[] = saved ? JSON.parse(saved) : INITIAL_ORDERS;
-      return (Array.isArray(list) ? list : INITIAL_ORDERS).map((ord) => ({
-        ...ord,
-        items: (ord.items || []).map((it) => ({
-          ...it,
-          image: resolveItemImage(it.productId, it.image)
-        }))
-      }));
+      const saved = localStorage.getItem('dreamqueen_orders_v2');
+      if (saved) {
+        const parsed: Order[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((ord) => ({
+            ...ord,
+            items: (ord.items || []).map((it) => ({
+              ...it,
+              image: resolveItemImage(it.productId, it.image)
+            }))
+          }));
+        }
+      }
+      return INITIAL_ORDERS;
     } catch {
       return INITIAL_ORDERS;
     }
@@ -272,52 +323,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
-          ...DEFAULT_SETTINGS,
+          ...DEFAULT_STORE_SETTINGS,
           ...parsed,
-          standardShippingFee:
-            parsed.standardShippingFee === 40 || parsed.standardShippingFee === undefined
-              ? 20
-              : parsed.standardShippingFee,
-          codFee:
-            parsed.codFee === 29 || parsed.codFee === undefined
-              ? 10
-              : parsed.codFee,
-          supportPhone: '8097706536',
-          supportEmail: 'ayeshalk2025@gmail.com',
-          upiId: '8097706536@postbank',
-          upiPayeeName: 'AYESHA LUKMAN SHAIKH'
+          shiprocketApiKey: ''
         };
       }
-      return DEFAULT_SETTINGS;
+      return DEFAULT_STORE_SETTINGS;
     } catch {
-      return DEFAULT_SETTINGS;
+      return DEFAULT_STORE_SETTINGS;
     }
   });
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('dreamqueen_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.email && parsed.name && parsed.name !== 'Aanya Sharma') {
-          return parsed;
-        }
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
-
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalIntent, setAuthModalIntent] = useState<'checkout' | 'general' | 'custom_order'>('general');
+  const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState(false);
+  const [authModalIntent, setAuthModalIntent] = useState<'checkout' | 'general' | 'custom_order'>(
+    'general'
+  );
 
   const openAuthModal = (intent: 'checkout' | 'general' | 'custom_order' = 'general') => {
     setAuthModalIntent(intent);
     setIsAuthModalOpen(true);
   };
 
-  const [activeTab, setActiveTab] = useState<'home' | 'shop' | 'custom' | 'customer' | 'contact'>('home');
+  const [activeTab, setActiveTabState] = useState<AppTab>('home');
+  const [selectedShopCategory, setSelectedShopCategory] = useState<string>('All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -326,108 +357,220 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
   const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
 
+  const setActiveTab = useCallback((tab: AppTab) => {
+    setActiveTabState(tab);
+  }, []);
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+      const id = Math.random().toString(36).substring(2, 9);
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    []
+  );
+
+  // Clean up legacy insecure password storage key if present
+  useEffect(() => {
+    try {
+      localStorage.removeItem('dreamqueen_registered_users');
+      localStorage.removeItem('dreamqueen_current_user');
+    } catch {}
+  }, []);
+
+  // Hydrate authenticated Supabase user -> profiles + addresses
+  const hydrateUserFromSession = useCallback(async (authUser: any | null) => {
+    if (!authUser) {
+      setCurrentUser(null);
+      setIsAuthLoading(false);
+      return;
+    }
+
+    try {
+      const [profile, addresses] = await Promise.all([
+        fetchCurrentProfile().catch(() => null),
+        fetchUserAddresses(authUser.id).catch(() => [])
+      ]);
+
+      const fallbackAddresses: ShippingAddress[] = Array.isArray(profile?.saved_addresses)
+        ? profile.saved_addresses
+        : [];
+      const mergedAddresses = addresses.length > 0 ? addresses : fallbackAddresses;
+
+      const userWish: string[] = Array.isArray(profile?.wishlist_product_ids)
+        ? profile.wishlist_product_ids
+        : [];
+
+      const role: 'customer' | 'admin' = profile?.role === 'admin' ? 'admin' : 'customer';
+
+      const hydratedUser: User = {
+        id: authUser.id,
+        name:
+          profile?.full_name ||
+          authUser.user_metadata?.full_name ||
+          authUser.email?.split('@')[0] ||
+          'DreamQueen Customer',
+        email: authUser.email || profile?.email || '',
+        phone: profile?.phone || authUser.user_metadata?.phone || '',
+        role,
+        emailConfirmed: Boolean(authUser.email_confirmed_at),
+        savedAddresses: mergedAddresses,
+        wishlistProductIds: userWish
+      };
+
+      setCurrentUser(hydratedUser);
+      if (userWish.length > 0) {
+        setWishlist((prev) => Array.from(new Set([...prev, ...userWish])));
+      }
+    } catch {
+      setCurrentUser({
+        id: authUser.id,
+        name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Customer',
+        email: authUser.email || '',
+        phone: authUser.user_metadata?.phone || '',
+        role: 'customer',
+        emailConfirmed: Boolean(authUser.email_confirmed_at),
+        savedAddresses: [],
+        wishlistProductIds: []
+      });
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      hydrateUserFromSession(data.session?.user || null);
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecoveryMode(true);
+        setIsAuthModalOpen(true);
+      }
+      hydrateUserFromSession(session?.user || null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.subscription.unsubscribe();
+    };
+  }, [hydrateUserFromSession]);
+
   // Synchronize data from connected Supabase backend
-  const refreshFromSupabase = async () => {
+  const refreshFromSupabase = useCallback(async () => {
     setIsSupabaseSyncing(true);
     try {
-      // 1. Sync catalog products from Supabase
+      // 1. Products
       try {
         const liveProducts = await fetchProductsFromSupabase();
         if (liveProducts && liveProducts.length > 0) {
-          const validLive = liveProducts
-            .filter((p) => p.images?.[0]?.startsWith('/assets/aistudio/'))
+          const sanitized = liveProducts
+            .filter((p) => p.images?.some(isValidCatalogImage))
             .map((p) =>
-              p.id === 'prod-pearl-rose-charm'
-                ? { ...p, images: ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png'] }
+              p.id === 'prod-pearl-rose-charm' &&
+              p.images?.[0]?.startsWith('/assets/aistudio/') &&
+              !p.images[0].includes('Crochet_Flower_Charm_on_Cream_Handbag_02a1d697')
+                ? {
+                    ...p,
+                    images: ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png']
+                  }
                 : p
             );
-          if (validLive.length > 0) {
-            setProducts(validLive);
-            try {
-              localStorage.setItem('dreamqueen_products_v7', JSON.stringify(validLive));
-            } catch {}
+          if (sanitized.length > 0) {
+            setProducts(sanitized);
           }
         }
-      } catch (pErr) {
-        console.warn('[Supabase] Products sync notice:', pErr);
+      } catch (err) {
+        console.warn('[Supabase] Products sync notice:', err);
       }
 
-      // 2. Sync orders from Supabase
+      // 2. Orders (respects RLS: user sees own orders; admin sees all orders)
       try {
         const remoteOrders = await fetchOrdersFromSupabase();
         if (remoteOrders && remoteOrders.length > 0) {
           setOrders((prev) => {
-            const remoteMap = new Map(remoteOrders.map((o) => [o.id, o]));
-            const remoteNumMap = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
+            const remoteById = new Map(remoteOrders.map((o) => [o.id, o]));
+            const remoteByNum = new Map(remoteOrders.map((o) => [o.orderNumber.toUpperCase(), o]));
             const merged = [...remoteOrders];
             for (const ord of prev) {
               if (
-                !remoteMap.has(ord.id) &&
-                !remoteNumMap.has(ord.orderNumber.toUpperCase()) &&
+                !remoteById.has(ord.id) &&
+                !remoteByNum.has(ord.orderNumber.toUpperCase()) &&
                 !ord.id.startsWith('ord-demo-')
               ) {
                 merged.push(ord);
               }
             }
-            return merged;
+            return merged.sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
           });
         }
-      } catch (oErr) {
-        console.warn('[Supabase] Orders sync notice:', oErr);
+      } catch (err) {
+        console.warn('[Supabase] Orders sync notice:', err);
       }
 
-      // 3. Sync custom orders from Supabase
+      // 3. Custom orders
       try {
         const liveCustom = await fetchCustomOrdersFromSupabase();
         if (liveCustom && liveCustom.length > 0) {
           setCustomOrders(liveCustom);
         }
-      } catch (cErr) {
-        console.warn('[Supabase] Custom orders sync notice:', cErr);
+      } catch (err) {
+        console.warn('[Supabase] Custom orders sync notice:', err);
       }
 
-      // 4. Sync feedbacks from Supabase
+      // 4. Feedbacks
       try {
         const liveFeedbacks = await fetchFeedbacksFromSupabase();
         if (liveFeedbacks && liveFeedbacks.length > 0) {
           setFeedbacks(liveFeedbacks);
         }
-      } catch (fErr) {
-        console.warn('[Supabase] Feedbacks sync notice:', fErr);
+      } catch (err) {
+        console.warn('[Supabase] Feedbacks sync notice:', err);
       }
 
-      // 5. Sync store settings from Supabase
+      // 5. Coupons
+      try {
+        const liveCoupons = await fetchCouponsFromSupabase();
+        if (liveCoupons && liveCoupons.length > 0) {
+          setCoupons(liveCoupons);
+        }
+      } catch (err) {
+        console.warn('[Supabase] Coupons sync notice:', err);
+      }
+
+      // 6. Store settings
       try {
         const liveSettings = await fetchStoreSettingsFromSupabase();
         if (liveSettings) {
           setStoreSettings((prev) => ({
             ...prev,
-            ...liveSettings,
-            standardShippingFee: liveSettings.standardShippingFee ?? 20,
-            codFee: liveSettings.codFee ?? 10
+            ...liveSettings
           }));
         }
-      } catch (sErr) {
-        console.warn('[Supabase] Store settings sync notice:', sErr);
+      } catch (err) {
+        console.warn('[Supabase] Store settings sync notice:', err);
       }
     } finally {
       setIsSupabaseSyncing(false);
     }
-  };
+  }, []);
 
-  // Cross-device live Realtime & visibility sync
   useEffect(() => {
-    // 1. Initial cloud fetch
     refreshFromSupabase();
 
-    // 2. Realtime WebSocket subscription for instant cross-device updates
     const unsubscribe = subscribeToRealtimeUpdates({
       onProductChange: (event, payload) => {
-        if (event === 'DELETE') {
-          if (payload.old?.id) {
-            const delId = String(payload.old.id);
-            setProducts((prev) => prev.filter((p) => p.id !== delId));
-          }
+        if (event === 'DELETE' && payload.old?.id) {
+          const delId = String(payload.old.id);
+          setProducts((prev) => prev.filter((p) => p.id !== delId));
         } else if (payload.new) {
           const incoming = productFromSupabaseRow(payload.new);
           setProducts((prev) => {
@@ -445,9 +588,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (event === 'DELETE') {
           const delId = String(payload.old?.id || '');
           const delNum = String(payload.old?.order_number || '');
-          if (delId || delNum) {
-            setOrders((prev) => prev.filter((o) => (delId ? o.id !== delId : true) && (delNum ? o.orderNumber !== delNum : true)));
-          }
+          setOrders((prev) =>
+            prev.filter(
+              (o) => (delId ? o.id !== delId : true) && (delNum ? o.orderNumber !== delNum : true)
+            )
+          );
         } else if (payload.new) {
           const incoming = orderFromSupabaseRow(payload.new);
           setOrders((prev) => {
@@ -464,11 +609,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       },
       onCustomOrderChange: (event, payload) => {
-        if (event === 'DELETE') {
-          if (payload.old?.id) {
-            const delId = String(payload.old.id);
-            setCustomOrders((prev) => prev.filter((c) => c.id !== delId));
-          }
+        if (event === 'DELETE' && payload.old?.id) {
+          const delId = String(payload.old.id);
+          setCustomOrders((prev) => prev.filter((c) => c.id !== delId));
         } else if (payload.new) {
           const incoming = customOrderFromSupabaseRow(payload.new);
           setCustomOrders((prev) => {
@@ -483,11 +626,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       },
       onFeedbackChange: (event, payload) => {
-        if (event === 'DELETE') {
-          if (payload.old?.id) {
-            const delId = String(payload.old.id);
-            setFeedbacks((prev) => prev.filter((f) => f.id !== delId));
-          }
+        if (event === 'DELETE' && payload.old?.id) {
+          const delId = String(payload.old.id);
+          setFeedbacks((prev) => prev.filter((f) => f.id !== delId));
         } else if (payload.new) {
           const incoming = feedbackFromSupabaseRow(payload.new);
           setFeedbacks((prev) => {
@@ -500,194 +641,197 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return [incoming, ...prev];
           });
         }
+      },
+      onCouponChange: () => {
+        fetchCouponsFromSupabase()
+          .then((list) => {
+            if (list.length > 0) setCoupons(list);
+          })
+          .catch(() => {});
+      },
+      onSettingsChange: () => {
+        fetchStoreSettingsFromSupabase()
+          .then((s) => {
+            if (s) setStoreSettings((prev) => ({ ...prev, ...s }));
+          })
+          .catch(() => {});
       }
     });
 
-    // 3. Fallback polling every 10 seconds to keep all devices 100% in sync
     const intervalId = setInterval(() => {
       refreshFromSupabase();
-    }, 10000);
+    }, 20000);
 
-    // 4. Instant re-sync when switching tabs or bringing app to foreground on mobile
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         refreshFromSupabase();
       }
     };
-    const handleFocus = () => {
-      refreshFromSupabase();
-    };
-
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
 
     return () => {
       unsubscribe();
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [refreshFromSupabase]);
 
-  // Sync current user session
+  // Persist non-sensitive UI caches locally
   useEffect(() => {
     try {
-      if (currentUser) {
-        localStorage.setItem('dreamqueen_current_user', JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem('dreamqueen_current_user');
-      }
-    } catch (e) {
-      console.warn('User storage save failed', e);
-    }
-  }, [currentUser]);
-
-
-
-  // Sync to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('dreamqueen_products_v7', JSON.stringify(products));
-      localStorage.setItem('dreamqueen_products_v6', JSON.stringify(products));
-      localStorage.setItem('dreamqueen_products_v5', JSON.stringify(products));
-      localStorage.setItem('dreamqueen_products_v4', JSON.stringify(products));
-      localStorage.setItem('dreamqueen_products', JSON.stringify(products));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+      localStorage.setItem('dreamqueen_products_catalog_v1', JSON.stringify(products));
+    } catch {}
   }, [products]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_cart', JSON.stringify(cart));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [cart]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_wishlist', JSON.stringify(wishlist));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [wishlist]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('dreamqueen_orders', JSON.stringify(orders));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+      localStorage.setItem('dreamqueen_orders_v2', JSON.stringify(orders));
+    } catch {}
   }, [orders]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_coupons', JSON.stringify(coupons));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [coupons]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_custom_orders', JSON.stringify(customOrders));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [customOrders]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_feedbacks', JSON.stringify(feedbacks));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [feedbacks]);
 
   useEffect(() => {
     try {
       localStorage.setItem('dreamqueen_settings', JSON.stringify(storeSettings));
-    } catch (e) {
-      console.warn('Storage save failed', e);
-    }
+    } catch {}
   }, [storeSettings]);
 
-  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3800);
-  };
+  const activeProducts = products.filter((p) => p.isActive !== false);
 
-  const addProduct = (productData: Omit<Product, 'id'>) => {
+  // =========================================================
+  // ADMIN PRODUCT CRUD
+  // =========================================================
+  const addProduct = async (productData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
       ...productData,
+      isActive: productData.isActive ?? true,
       id: `prod-${Date.now()}`
     };
     setProducts((prev) => [newProduct, ...prev]);
-    syncProductToSupabase(newProduct).catch((err) =>
-      console.warn('[Supabase] Sync product notice:', err)
+    const res = await syncProductToSupabase(newProduct);
+    if (!res.success) {
+      showToast(`Saved locally. Supabase notice: ${res.error}`, 'info');
+    } else {
+      showToast(`Added "${newProduct.name}" to catalog!`);
+    }
+  };
+
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    let updatedTarget: Product | undefined;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          updatedTarget = { ...p, ...updates };
+          return updatedTarget;
+        }
+        return p;
+      })
     );
-    showToast(`Added "${newProduct.name}" to store catalog!`);
-  };
-
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    setProducts((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, ...updates } : p));
-      const target = next.find((p) => p.id === id);
-      if (target) {
-        syncProductToSupabase(target).catch((err) =>
-          console.warn('[Supabase] Sync product update notice:', err)
-        );
+    if (updatedTarget) {
+      const res = await syncProductToSupabase(updatedTarget);
+      if (!res.success) {
+        showToast(`Updated locally. Supabase notice: ${res.error}`, 'info');
+        return;
       }
-      return next;
-    });
-    showToast('Product details updated successfully');
+    }
+    showToast('Product updated successfully');
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
-    deleteProductFromSupabase(id).catch((err) =>
-      console.warn('[Supabase] Delete product notice:', err)
+    try {
+      await deleteProductFromSupabase(id);
+      showToast('Product removed from catalog', 'info');
+    } catch (err: any) {
+      showToast(err?.message || 'Removed locally (check admin permissions in DB)', 'info');
+    }
+  };
+
+  const updateProductStock = async (id: string, delta: number) => {
+    let target: Product | undefined;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          target = { ...p, stock: Math.max(0, p.stock + delta) };
+          return target;
+        }
+        return p;
+      })
     );
-    showToast('Product removed from catalog', 'info');
+    if (target) {
+      await syncProductToSupabase(target).catch(() => {});
+    }
   };
 
-  const updateProductStock = (id: string, delta: number) => {
-    setProducts((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p));
-      const target = next.find((p) => p.id === id);
-      if (target) {
-        syncProductToSupabase(target).catch((err) =>
-          console.warn('[Supabase] Sync product stock update notice:', err)
-        );
-      }
-      return next;
-    });
-  };
-
+  // =========================================================
+  // CART & WISHLIST (Stock-capped)
+  // =========================================================
   const addToCart = (product: Product, quantity = 1, colorIndex = 0) => {
-    const chosenColor = product.colors && product.colors.length > 0
-      ? product.colors[colorIndex] || product.colors[0]
-      : { name: 'Original', hex: '#5B3A29' };
+    if (product.stock <= 0 || product.isActive === false) {
+      showToast(`"${product.name}" is currently out of stock.`, 'error');
+      return;
+    }
 
+    const chosenColor =
+      product.colors && product.colors.length > 0
+        ? product.colors[colorIndex] || product.colors[0]
+        : { name: 'Original', hex: '#5B3A29' };
+
+    let capped = false;
     setCart((prev) => {
       const existing = prev.find(
         (item) => item.product.id === product.id && item.selectedColor.name === chosenColor.name
       );
+      const existingQty = existing ? existing.quantity : 0;
+      const desiredTotal = existingQty + quantity;
+      const finalQty = Math.min(product.stock, desiredTotal);
+      if (desiredTotal > product.stock) {
+        capped = true;
+      }
       if (existing) {
         return prev.map((item) =>
           item.product.id === product.id && item.selectedColor.name === chosenColor.name
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, product, quantity: finalQty }
             : item
         );
       }
-      return [...prev, { product, quantity, selectedColor: chosenColor }];
+      return [...prev, { product, quantity: finalQty, selectedColor: chosenColor }];
     });
 
-    showToast(`Added ${product.name} (${chosenColor.name}) to your basket!`);
+    if (capped) {
+      showToast(`Adjusted to maximum available stock (${product.stock}) for ${product.name}.`, 'info');
+    } else {
+      showToast(`Added ${product.name} (${chosenColor.name}) to your basket!`);
+    }
   };
 
   const removeFromCart = (productId: string, colorName: string) => {
@@ -704,90 +848,309 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       removeFromCart(productId, colorName);
       return;
     }
+    const latestProd = products.find((p) => p.id === productId);
     setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId && item.selectedColor.name === colorName
-          ? { ...item, quantity }
-          : item
-      )
+      prev.map((item) => {
+        if (item.product.id === productId && item.selectedColor.name === colorName) {
+          const maxStock = latestProd?.stock ?? item.product.stock;
+          if (quantity > maxStock) {
+            showToast(`Only ${maxStock} piece(s) in stock right now.`, 'info');
+            return { ...item, quantity: Math.max(1, maxStock) };
+          }
+          return { ...item, quantity };
+        }
+        return item;
+      })
     );
   };
 
-  const clearCart = () => {
-    setCart([]);
-  };
+  const clearCart = () => setCart([]);
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartSubtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
 
   const toggleWishlist = (productId: string) => {
-    const product = products.find((p) => p.id === productId);
     setWishlist((prev) => {
       const exists = prev.includes(productId);
-      if (exists) {
-        showToast(`Removed from wishlist`, 'info');
-        return prev.filter((id) => id !== productId);
-      } else {
-        showToast(`Saved to your handmade wishlist ❤️`);
-        return [...prev, productId];
+      const next = exists ? prev.filter((id) => id !== productId) : [...prev, productId];
+      showToast(exists ? 'Removed from wishlist' : 'Saved to your handmade wishlist', exists ? 'info' : 'success');
+
+      if (currentUser) {
+        updateCurrentProfile(currentUser.name, currentUser.phone, {
+          wishlistProductIds: next
+        }).catch(() => {});
       }
+      return next;
     });
   };
 
   const isInWishlist = (productId: string) => wishlist.includes(productId);
 
-  const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>): Order => {
-    const randomNum = Math.floor(100000 + Math.random() * 900000);
-    const orderNumber = `DQ-${randomNum}`;
-    const newOrder: Order = {
-      ...orderData,
-      id: `ord-${Date.now()}`,
-      orderNumber,
-      createdAt: new Date().toISOString(),
-      items: (orderData.items || []).map((it) => ({
-        ...it,
-        image: resolveItemImage(it.productId, it.image)
-      }))
-    };
+  // =========================================================
+  // SERVER-VALIDATED ORDER LIFECYCLE
+  // =========================================================
+  const placeServerOrder = async (input: PlaceOrderInput): Promise<PlaceOrderResult> => {
+    try {
+      const token = await getAccessToken();
+      const resp = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          items: cart.map((item) => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+            selectedColor: item.selectedColor
+          })),
+          shippingAddress: input.shippingAddress,
+          paymentMethod: input.paymentMethod,
+          couponCode: activeCoupon?.code || undefined,
+          notes: input.notes,
+          idempotencyKey: input.idempotencyKey
+        })
+      });
 
-    setOrders((prev) => [newOrder, ...prev]);
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || !payload.order) {
+        return {
+          error:
+            payload?.error ||
+            'Could not create your order right now. Please check your details and try again.'
+        };
+      }
 
-    // deduct stock
-    newOrder.items.forEach((item) => {
-      updateProductStock(item.productId, -item.quantity);
-    });
+      const createdOrder: Order = payload.order;
+      setOrders((prev) => {
+        const exists = prev.some((o) => o.id === createdOrder.id);
+        return exists ? prev : [createdOrder, ...prev];
+      });
 
-    // Asynchronously sync order to Supabase
-    syncOrderToSupabase(newOrder).catch((err) =>
-      console.warn('[Supabase] Auto-sync order skipped/queued:', err)
-    );
+      // Deduct local product stock to mirror server state immediately
+      createdOrder.items.forEach((it) => {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === it.productId ? { ...p, stock: Math.max(0, p.stock - it.quantity) } : p
+          )
+        );
+      });
 
-    clearCart();
-    setActiveCoupon(null);
-    return newOrder;
+      // Clear cart & active coupon ONLY after persistence succeeded!
+      clearCart();
+      setActiveCoupon(null);
+
+      return { order: createdOrder };
+    } catch (err: any) {
+      return {
+        error: err?.message || 'Network error while placing your order. Your basket is still safe.'
+      };
+    }
   };
 
-  const updateOrderStatus = (
+  const refreshOrderAfterGateway = (updatedOrderRow: any) => {
+    if (!updatedOrderRow) return;
+    const mapped = orderFromSupabaseRow(updatedOrderRow);
+    setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
+  };
+
+  const submitUpiUtr = async (
+    orderId: string,
+    utr: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const token = await getAccessToken();
+      const resp = await fetch('/api/payments/upi/submit-utr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ orderId, utr })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return { success: false, error: data.error || 'Could not record UTR reference.' };
+      }
+
+      setOrders((prev) =>
+        prev.map((ord) =>
+          ord.id === orderId
+            ? {
+                ...ord,
+                upiTransactionRef: utr.trim(),
+                paymentStatus: 'pending',
+                trackingStatus: 'payment_pending'
+              }
+            : ord
+        )
+      );
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error submitting UTR.' };
+    }
+  };
+
+  const verifyOrderPaymentAdmin = async (
+    orderId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const token = await getAccessToken();
+      const resp = await fetch(`/api/admin/orders/${orderId}/verify-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return { success: false, error: data.error || 'Verification failed.' };
+      }
+      const nowIso = new Date().toISOString();
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                paymentStatus: 'paid',
+                paymentVerifiedAt: nowIso,
+                trackingStatus:
+                  o.trackingStatus === 'pending' || o.trackingStatus === 'payment_pending'
+                    ? 'preparing'
+                    : o.trackingStatus
+              }
+            : o
+        )
+      );
+      showToast('Payment marked as verified & paid!');
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Verification request failed.' };
+    }
+  };
+
+  const refundOrderAdmin = async (
+    orderId: string
+  ): Promise<{ success: boolean; refundStatus?: string; error?: string }> => {
+    try {
+      const token = await getAccessToken();
+      const resp = await fetch(`/api/admin/orders/${orderId}/refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return { success: false, error: data.error || 'Refund failed.' };
+      }
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                paymentStatus: data.refundStatus || 'refund_initiated',
+                trackingStatus: data.refundStatus || 'refund_initiated',
+                refundStatus: data.refundStatus,
+                refundId: data.refundId || o.refundId
+              }
+            : o
+        )
+      );
+      showToast(`Refund ${data.refundStatus === 'refunded' ? 'completed' : 'initiated'}.`);
+      return { success: true, refundStatus: data.refundStatus };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Refund request failed.' };
+    }
+  };
+
+  const cancelUserOrder = async (
+    orderId: string,
+    reason = 'Cancelled by customer before dispatch'
+  ): Promise<{ success: boolean; error?: string }> => {
+    const target = orders.find((o) => o.id === orderId || o.orderNumber === orderId);
+    if (!target) {
+      return { success: false, error: 'Order not found.' };
+    }
+    const cancellableStatuses: OrderTrackingStatus[] = [
+      'pending',
+      'payment_pending',
+      'payment_confirmed',
+      'preparing'
+    ];
+    if (!cancellableStatuses.includes(target.trackingStatus)) {
+      return {
+        success: false,
+        error: 'Orders already packed or shipped cannot be cancelled online. Please contact support.'
+      };
+    }
+
+    const res = await updateOrderStatus(target.id, 'cancelled', undefined, reason);
+    return res;
+  };
+
+  const updateOrderStatus = async (
     orderId: string,
     status: OrderTrackingStatus,
-    trackingNo?: string
-  ) => {
+    trackingNo?: string,
+    cancellationReason?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const existing = orders.find((ord) => ord.id === orderId || ord.orderNumber === orderId);
+    const shouldRestoreStock =
+      existing && existing.trackingStatus !== 'cancelled' && status === 'cancelled';
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId || ord.orderNumber === orderId) {
           return {
             ...ord,
             trackingStatus: status,
-            shiprocketTrackingNumber: trackingNo || ord.shiprocketTrackingNumber
+            shiprocketTrackingNumber:
+              trackingNo !== undefined ? trackingNo : ord.shiprocketTrackingNumber,
+            cancellationReason:
+              cancellationReason !== undefined ? cancellationReason : ord.cancellationReason
           };
         }
         return ord;
       })
     );
-    updateOrderStatusInSupabase(orderId, status, trackingNo).catch((err) =>
-      console.warn('[Supabase] Update order status notice:', err)
-    );
-    showToast(`Order status updated to: ${status.replace('_', ' ').toUpperCase()}`);
+
+    if (shouldRestoreStock && existing) {
+      for (const it of existing.items) {
+        await updateProductStock(it.productId, it.quantity);
+      }
+    }
+
+    if (currentUser?.role === 'admin') {
+      try {
+        const token = await getAccessToken();
+        const resp = await fetch(`/api/admin/orders/${existing?.id || orderId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            trackingStatus: status,
+            shiprocketTrackingNumber: trackingNo,
+            cancellationReason
+          })
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          return { success: false, error: data.error };
+        }
+      } catch {}
+    } else {
+      await updateOrderStatusInSupabase(existing?.id || orderId, status, trackingNo).catch(
+        () => {}
+      );
+    }
+
+    showToast(`Order status updated to ${status.replace(/_/g, ' ').toUpperCase()}`);
+    return { success: true };
   };
 
   const getOrderByIdOrNumber = (query: string): Order | undefined => {
@@ -797,23 +1160,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
+  // =========================================================
+  // COUPONS
+  // =========================================================
   const applyCoupon = (code: string) => {
     const normalized = code.trim().toUpperCase();
-    const coupon = coupons.find((c) => c.code.toUpperCase() === normalized && c.isActive);
+    const coupon = coupons.find((c) => c.code.toUpperCase() === normalized);
+    const check = validateCouponRule(coupon, cartSubtotal);
 
-    if (!coupon) {
-      return { success: false, message: 'Invalid or expired coupon code' };
-    }
-
-    if (cartSubtotal < coupon.minOrderAmount) {
-      return {
-        success: false,
-        message: `Requires a minimum cart value of ₹${coupon.minOrderAmount}`
-      };
+    if (!check.valid || !coupon) {
+      return { success: false, message: check.reason || 'Invalid or expired coupon code.' };
     }
 
     setActiveCoupon(coupon);
-    showToast(`Coupon applied! Enjoy your handmade discount 🌸`);
+    showToast(`Coupon ${coupon.code} applied! Enjoy your handmade discount 🌸`);
     return { success: true, message: `Coupon ${coupon.code} applied successfully!` };
   };
 
@@ -822,102 +1182,130 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Coupon removed', 'info');
   };
 
-  const addCoupon = (coupon: Coupon) => {
-    setCoupons((prev) => [coupon, ...prev]);
-    showToast(`Coupon ${coupon.code} created!`);
+  const addCoupon = async (coupon: Coupon) => {
+    const normalized = { ...coupon, code: coupon.code.toUpperCase() };
+    setCoupons((prev) => [normalized, ...prev.filter((c) => c.code !== normalized.code)]);
+    try {
+      await upsertCouponToSupabase(normalized);
+      showToast(`Coupon ${normalized.code} saved!`);
+    } catch (err: any) {
+      showToast(err?.message || 'Saved locally (admin DB policy notice)', 'info');
+    }
   };
 
-  const deleteCoupon = (code: string) => {
+  const updateCoupon = async (coupon: Coupon) => {
+    setCoupons((prev) => prev.map((c) => (c.code === coupon.code ? coupon : c)));
+    try {
+      await upsertCouponToSupabase(coupon);
+      showToast(`Coupon ${coupon.code} updated`);
+    } catch (err: any) {
+      showToast(err?.message || 'Updated locally', 'info');
+    }
+  };
+
+  const deleteCoupon = async (code: string) => {
     setCoupons((prev) => prev.filter((c) => c.code !== code));
-    showToast(`Coupon deleted`, 'info');
+    if (activeCoupon?.code === code) setActiveCoupon(null);
+    try {
+      await deleteCouponFromSupabase(code);
+      showToast('Coupon deleted', 'info');
+    } catch {
+      showToast('Coupon deleted locally', 'info');
+    }
   };
 
-  const submitCustomOrder = (request: Omit<CustomOrderRequest, 'id' | 'status' | 'createdAt'>) => {
+  // =========================================================
+  // CUSTOM ORDERS
+  // =========================================================
+  const submitCustomOrder = async (
+    request: Omit<CustomOrderRequest, 'id' | 'status' | 'createdAt'>
+  ) => {
     const newRequest: CustomOrderRequest = {
       ...request,
+      userId: currentUser?.id,
       id: `custom-${Date.now()}`,
       status: 'submitted',
       createdAt: new Date().toISOString()
     };
     setCustomOrders((prev) => [newRequest, ...prev]);
-
-    // Asynchronously sync custom order to Supabase
-    syncCustomOrderToSupabase(newRequest).catch((err) =>
-      console.warn('[Supabase] Auto-sync custom order skipped/queued:', err)
-    );
-
+    await syncCustomOrderToSupabase(newRequest).catch(() => {});
     showToast('Custom order inquiry submitted! We will contact you on WhatsApp 🌸');
   };
 
-  const updateCustomOrderStatus = (id: string, status: CustomOrderRequest['status']) => {
-    setCustomOrders((prev) => prev.map((co) => (co.id === id ? { ...co, status } : co)));
-    updateCustomOrderStatusInSupabase(id, status).catch((err) =>
-      console.warn('[Supabase] Update custom order status notice:', err)
+  const updateCustomOrderStatus = async (
+    id: string,
+    status: CustomOrderRequest['status'],
+    extra?: { quotedPrice?: number; adminNotes?: string }
+  ) => {
+    setCustomOrders((prev) =>
+      prev.map((co) =>
+        co.id === id
+          ? {
+              ...co,
+              status,
+              quotedPrice: extra?.quotedPrice ?? co.quotedPrice,
+              adminNotes: extra?.adminNotes ?? co.adminNotes
+            }
+          : co
+      )
     );
-    showToast('Custom inquiry status updated');
+    await updateCustomOrderInSupabase(id, {
+      status,
+      quotedPrice: extra?.quotedPrice,
+      adminNotes: extra?.adminNotes
+    }).catch(() => {});
+    showToast('Custom inquiry updated');
   };
 
-  const submitFeedback = (
+  // =========================================================
+  // FEEDBACK / REVIEWS
+  // =========================================================
+  const submitFeedback = async (
     feedbackData: Omit<PurchasedItemFeedback, 'id' | 'createdAt'>
   ) => {
     const existingIndex = feedbacks.findIndex(
-      (f) =>
-        f.orderNumber === feedbackData.orderNumber &&
-        f.productId === feedbackData.productId
+      (f) => f.orderNumber === feedbackData.orderNumber && f.productId === feedbackData.productId
     );
 
-    let updatedFeedbacks: PurchasedItemFeedback[];
     let feedbackToSync: PurchasedItemFeedback;
-
     if (existingIndex >= 0) {
-      const updatedItem: PurchasedItemFeedback = {
+      feedbackToSync = {
         ...feedbacks[existingIndex],
         ...feedbackData,
+        userId: currentUser?.id || feedbacks[existingIndex].userId,
+        isApproved: true,
         createdAt: new Date().toISOString()
       };
-      feedbackToSync = updatedItem;
-      updatedFeedbacks = feedbacks.map((f, idx) =>
-        idx === existingIndex ? updatedItem : f
-      );
-      showToast('Thank you! Your feedback has been updated 🌸');
+      setFeedbacks((prev) => prev.map((f, i) => (i === existingIndex ? feedbackToSync : f)));
+      showToast('Thank you! Your review has been updated 🌸');
     } else {
-      const newFeedback: PurchasedItemFeedback = {
+      feedbackToSync = {
         ...feedbackData,
+        userId: currentUser?.id,
+        isVerifiedPurchase: true,
+        isApproved: true,
         id: `fb-${Date.now()}`,
         createdAt: new Date().toISOString()
       };
-      feedbackToSync = newFeedback;
-      updatedFeedbacks = [newFeedback, ...feedbacks];
-
-      // Update product rating and reviews count
+      setFeedbacks((prev) => [feedbackToSync, ...prev]);
       setProducts((prev) =>
         prev.map((p) => {
           if (p.id === feedbackData.productId) {
-            const currentCount = p.reviewsCount || 0;
-            const newCount = currentCount + 1;
-            const newAvg = Number(
-              (((p.rating || 5) * currentCount + feedbackData.rating) / newCount).toFixed(1)
+            const curCount = p.reviewsCount || 0;
+            const nextCount = curCount + 1;
+            const nextAvg = Number(
+              (((p.rating || 5) * curCount + feedbackData.rating) / nextCount).toFixed(1)
             );
-            return {
-              ...p,
-              reviewsCount: newCount,
-              rating: newAvg
-            };
+            return { ...p, reviewsCount: nextCount, rating: nextAvg };
           }
           return p;
         })
       );
-
-      showToast('Thank you! Your review helps our women artisans bloom 🌸');
+      showToast('Thank you! Your verified review helps our artisans bloom 🌸');
     }
 
-    setFeedbacks(updatedFeedbacks);
     setActiveFeedbackTarget(null);
-
-    // Asynchronously sync feedback to Supabase
-    syncFeedbackToSupabase(feedbackToSync).catch((err) =>
-      console.warn('[Supabase] Auto-sync feedback skipped/queued:', err)
-    );
+    await syncFeedbackToSupabase(feedbackToSync).catch(() => {});
   };
 
   const getFeedbackForOrderItem = (
@@ -929,217 +1317,253 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  const replyToFeedback = (feedbackId: string, replyText: string) => {
+  const replyToFeedback = async (feedbackId: string, replyText: string) => {
     const replyObj = {
       text: replyText,
       respondedAt: new Date().toISOString(),
       author: 'DreamQueen Atelier Team'
     };
+    let targetFb: PurchasedItemFeedback | undefined;
     setFeedbacks((prev) =>
       prev.map((f) => {
         if (f.id === feedbackId) {
-          const updated = {
-            ...f,
-            artisanResponse: replyObj
-          };
-          syncFeedbackToSupabase(updated).catch((err) =>
-            console.warn('[Supabase] Sync feedback reply notice:', err)
-          );
-          return updated;
+          targetFb = { ...f, artisanResponse: replyObj };
+          return targetFb;
         }
         return f;
       })
     );
-    showToast('Artisan response posted to customer review! 💌');
+    if (targetFb) {
+      await syncFeedbackToSupabase(targetFb).catch(() => {});
+    }
+    showToast('Artisan response posted! 💌');
   };
 
-  const updateStoreSettings = (settings: Partial<StoreSettings>) => {
-    setStoreSettings((prev) => ({ ...prev, ...settings }));
-    showToast('Store settings saved');
+  const toggleFeedbackApproval = async (feedbackId: string, isApproved: boolean) => {
+    let targetFb: PurchasedItemFeedback | undefined;
+    setFeedbacks((prev) =>
+      prev.map((f) => {
+        if (f.id === feedbackId) {
+          targetFb = { ...f, isApproved };
+          return targetFb;
+        }
+        return f;
+      })
+    );
+    if (targetFb) {
+      await syncFeedbackToSupabase(targetFb).catch(() => {});
+    }
+    showToast(isApproved ? 'Review published to storefront' : 'Review hidden from storefront', 'info');
   };
 
-  const registerUser = (data: { name: string; email: string; phone: string; password?: string }) => {
+  const deleteFeedback = async (feedbackId: string) => {
+    setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackId));
+    await deleteFeedbackFromSupabase(feedbackId).catch(() => {});
+    showToast('Review deleted', 'info');
+  };
+
+  // =========================================================
+  // STORE SETTINGS
+  // =========================================================
+  const updateStoreSettings = async (settings: Partial<StoreSettings>) => {
+    const next = { ...storeSettings, ...settings };
+    setStoreSettings(next);
+    try {
+      await updateStoreSettingsInSupabase(next);
+      showToast('Store settings saved to database');
+    } catch (err: any) {
+      showToast(err?.message || 'Settings saved locally', 'info');
+    }
+  };
+
+  // =========================================================
+  // REAL SUPABASE AUTHENTICATION
+  // =========================================================
+  const registerUser = async (data: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+  }): Promise<AuthActionResult> => {
     const trimmedName = data.name.trim();
     const trimmedEmail = data.email.trim().toLowerCase();
-    const trimmedPhone = data.phone.trim();
+    const normalizedPhone = normalizeIndianPhone(data.phone);
 
     if (!trimmedName) {
-      showToast('Please enter your full name', 'error');
-      return false;
+      return { success: false, error: 'Please enter your full name.' };
     }
-    const digits = trimmedPhone.replace(/\D/g, '');
-    if (digits.length < 10) {
-      showToast('Please enter a valid 10-digit mobile number', 'error');
-      return false;
+    if (normalizedPhone.length < 10) {
+      return { success: false, error: 'Please enter a valid 10-digit mobile number.' };
     }
     if (!trimmedEmail || !trimmedEmail.includes('@')) {
-      showToast('Please enter a valid email address', 'error');
-      return false;
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (!data.password || data.password.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters long.' };
     }
 
-    // Connect with Supabase Auth
-    if (data.password) {
-      signUpWithSupabase({
-        name: trimmedName,
-        email: trimmedEmail,
-        phone: trimmedPhone,
-        password: data.password
-      }).catch((e) => console.warn('[Supabase Auth] Notice:', e));
-    }
-
-    let accounts: any[] = [];
-    try {
-      const saved = localStorage.getItem('dreamqueen_registered_users');
-      accounts = saved ? JSON.parse(saved) : [];
-    } catch {
-      accounts = [];
-    }
-
-    const existing = accounts.find(
-      (a) => a.email?.toLowerCase() === trimmedEmail || a.phone?.replace(/\D/g, '') === digits
-    );
-
-    const newUser: User = {
-      id: existing ? existing.id : `usr-${Date.now()}`,
+    const res = await signUpWithSupabase({
       name: trimmedName,
       email: trimmedEmail,
-      phone: trimmedPhone,
-      role: 'customer',
-      savedAddresses: existing?.savedAddresses || [],
-      wishlistProductIds: existing?.wishlistProductIds || wishlist
-    };
+      phone: normalizedPhone,
+      password: data.password
+    });
 
-    const newAccount = {
-      ...newUser,
-      password: data.password || 'crochet123',
-      createdAt: existing?.createdAt || new Date().toISOString()
-    };
-
-    const updated = accounts.filter((a) => a.id !== newUser.id);
-    updated.push(newAccount);
-    try {
-      localStorage.setItem('dreamqueen_registered_users', JSON.stringify(updated));
-    } catch (e) {
-      console.warn(e);
+    if (res.error) {
+      return { success: false, error: res.error };
     }
 
-    setCurrentUser(newUser);
+    if (res.requiresEmailVerification) {
+      showToast('Verification link sent to your email! Please confirm before signing in.', 'info');
+      return { success: true, requiresEmailVerification: true };
+    }
+
+    await hydrateUserFromSession(res.user);
     setIsAuthModalOpen(false);
     showToast(`Welcome to DreamQueen, ${trimmedName.split(' ')[0]}! 💕`);
 
     if (authModalIntent === 'checkout') {
       setIsCheckoutOpen(true);
     }
-    return true;
+    return { success: true };
   };
 
-  const loginUser = (identifier: string, passwordOrName?: string) => {
-    const clean = identifier.trim().toLowerCase();
-    if (!clean) {
-      showToast('Please enter your email or mobile number', 'error');
-      return false;
+  const loginUser = async (email: string, password: string): Promise<AuthActionResult> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid registered email address.' };
+    }
+    if (!password) {
+      return { success: false, error: 'Please enter your password.' };
     }
 
-    // Attempt Supabase Auth login if email provided
-    if (clean.includes('@') && passwordOrName) {
-      signInWithSupabase(clean, passwordOrName).catch((e) =>
-        console.warn('[Supabase Auth] Login notice:', e)
-      );
-    }
-
-    let accounts: any[] = [];
-    try {
-      const saved = localStorage.getItem('dreamqueen_registered_users');
-      accounts = saved ? JSON.parse(saved) : [];
-    } catch {
-      accounts = [];
-    }
-
-    const cleanDigits = clean.replace(/\D/g, '');
-    const matched = accounts.find(
-      (a) =>
-        a.email?.toLowerCase() === clean ||
-        (cleanDigits.length >= 10 && a.phone?.replace(/\D/g, '') === cleanDigits)
-    );
-
-    if (matched) {
-      if (passwordOrName && matched.password && matched.password !== passwordOrName && !passwordOrName.includes('@')) {
-        showToast('Incorrect password. Please try again.', 'error');
-        return false;
-      }
-      const user: User = {
-        id: matched.id,
-        name: matched.name,
-        email: matched.email,
-        phone: matched.phone,
-        role: matched.role || 'customer',
-        savedAddresses: matched.savedAddresses || [],
-        wishlistProductIds: matched.wishlistProductIds || []
+    const res = await signInWithSupabase(cleanEmail, password);
+    if (res.error || !res.user) {
+      return {
+        success: false,
+        error: res.error || 'Invalid email or password. Please verify your credentials.'
       };
-      setCurrentUser(user);
-      setIsAuthModalOpen(false);
-      showToast(`Welcome back, ${user.name.split(' ')[0]}! 🌸`);
-      if (authModalIntent === 'checkout') {
-        setIsCheckoutOpen(true);
-      }
-      return true;
     }
 
-    // Auto-setup account if logging in with valid email/phone
-    const isEmail = clean.includes('@');
-    const namePart = passwordOrName && !passwordOrName.includes('•') && !passwordOrName.includes('@')
-      ? passwordOrName
-      : (isEmail ? clean.split('@')[0].replace(/[^a-zA-Z]/g, ' ') : 'Valued Customer');
-    const finalName = namePart.trim()
-      ? namePart.trim().charAt(0).toUpperCase() + namePart.trim().slice(1)
-      : 'Valued Customer';
-
-    const newUser: User = {
-      id: `usr-${Date.now()}`,
-      name: finalName,
-      email: isEmail ? clean : `${clean}@customer.dreamqueen.in`,
-      phone: !isEmail && cleanDigits.length >= 10 ? cleanDigits : '8097706536',
-      role: 'customer',
-      savedAddresses: [],
-      wishlistProductIds: wishlist
-    };
-
-    const newAccount = {
-      ...newUser,
-      password: passwordOrName || 'crochet123',
-      createdAt: new Date().toISOString()
-    };
-    accounts.push(newAccount);
-    try {
-      localStorage.setItem('dreamqueen_registered_users', JSON.stringify(accounts));
-    } catch {}
-
-    setCurrentUser(newUser);
+    await hydrateUserFromSession(res.user);
     setIsAuthModalOpen(false);
-    showToast(`Signed in as ${finalName}! 🌸`);
+    const firstName =
+      res.user.user_metadata?.full_name?.split(' ')[0] || cleanEmail.split('@')[0];
+    showToast(`Welcome back, ${firstName}! 🌸`);
+
     if (authModalIntent === 'checkout') {
       setIsCheckoutOpen(true);
     }
-    return true;
+    return { success: true };
   };
 
-  const logoutUser = () => {
-    signOutSupabase().catch(() => {});
+  const requestPasswordReset = async (email: string): Promise<AuthActionResult> => {
+    const clean = email.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      return { success: false, error: 'Please enter your registered email address.' };
+    }
+    const res = await sendPasswordResetEmail(clean);
+    if (!res.success) {
+      return { success: false, error: res.error || 'Could not send reset email.' };
+    }
+    showToast('Password reset link sent to your email!', 'success');
+    return { success: true };
+  };
+
+  const completePasswordReset = async (newPassword: string): Promise<AuthActionResult> => {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'New password must be at least 6 characters.' };
+    }
+    const res = await updateUserPassword(newPassword);
+    if (!res.success) {
+      return { success: false, error: res.error || 'Failed to update password.' };
+    }
+    setIsPasswordRecoveryMode(false);
+    setIsAuthModalOpen(false);
+    showToast('Your password has been updated! 🎉');
+    return { success: true };
+  };
+
+  const resendVerification = async (email: string): Promise<AuthActionResult> => {
+    const res = await resendVerificationEmail(email);
+    if (!res.success) {
+      return { success: false, error: res.error };
+    }
+    showToast('Verification email resent! Please check your inbox.', 'info');
+    return { success: true };
+  };
+
+  const logoutUser = async () => {
+    await signOutSupabase();
     setCurrentUser(null);
+    if (activeTab === 'admin') {
+      setActiveTab('home');
+    }
     showToast('Logged out successfully', 'info');
   };
 
-  const updateUserProfile = (name: string, phone: string) => {
-    if (currentUser) {
-      setCurrentUser({ ...currentUser, name, phone });
-      showToast('Profile updated');
+  const updateUserProfile = async (
+    name: string,
+    phone: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser) return { error: 'Not authenticated' };
+    const cleanPhone = normalizeIndianPhone(phone);
+    const res = await updateCurrentProfile(name.trim(), cleanPhone);
+    if (res.error) return { error: res.error };
+
+    setCurrentUser((prev) =>
+      prev ? { ...prev, name: name.trim(), phone: cleanPhone } : prev
+    );
+    showToast('Profile saved!');
+    return {};
+  };
+
+  const saveUserAddress = async (
+    address: ShippingAddress
+  ): Promise<{ address?: ShippingAddress; error?: string }> => {
+    if (!currentUser) {
+      return { error: 'Please sign in to save addresses.' };
     }
+    const res = await upsertUserAddress(currentUser.id, address);
+    if (res.error || !res.address) {
+      return { error: res.error || 'Could not save address.' };
+    }
+
+    const updated = await fetchUserAddresses(currentUser.id);
+    const nextAddresses =
+      updated.length > 0
+        ? updated
+        : [res.address, ...currentUser.savedAddresses.filter((a) => a.id !== res.address!.id)];
+
+    setCurrentUser((prev) => (prev ? { ...prev, savedAddresses: nextAddresses } : prev));
+    await updateCurrentProfile(currentUser.name, currentUser.phone, {
+      savedAddresses: nextAddresses
+    }).catch(() => {});
+    showToast('Delivery address saved!');
+    return { address: res.address };
+  };
+
+  const removeUserAddress = async (addressId: string): Promise<{ error?: string }> => {
+    if (!currentUser) return { error: 'Not authenticated' };
+    const res = await deleteUserAddress(currentUser.id, addressId);
+    if (res.error) return { error: res.error };
+    setCurrentUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            savedAddresses: prev.savedAddresses.filter((a) => a.id !== addressId)
+          }
+        : prev
+    );
+    showToast('Address deleted', 'info');
+    return {};
   };
 
   return (
     <StoreContext.Provider
       value={{
         products,
+        activeProducts,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -1155,7 +1579,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleWishlist,
         isInWishlist,
         orders,
-        createOrder,
+        placeServerOrder,
+        refreshOrderAfterGateway,
+        submitUpiUtr,
+        verifyOrderPaymentAdmin,
+        refundOrderAdmin,
+        cancelUserOrder,
         updateOrderStatus,
         getOrderByIdOrNumber,
         coupons,
@@ -1163,6 +1592,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         applyCoupon,
         removeCoupon,
         addCoupon,
+        updateCoupon,
         deleteCoupon,
         customOrders,
         submitCustomOrder,
@@ -1171,22 +1601,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         submitFeedback,
         getFeedbackForOrderItem,
         replyToFeedback,
+        toggleFeedbackApproval,
+        deleteFeedback,
         activeFeedbackTarget,
         setActiveFeedbackTarget,
         storeSettings,
         updateStoreSettings,
         currentUser,
+        isAuthLoading,
         isAuthModalOpen,
         setIsAuthModalOpen,
+        isPasswordRecoveryMode,
+        setIsPasswordRecoveryMode,
         authModalIntent,
         setAuthModalIntent,
         openAuthModal,
         registerUser,
         loginUser,
+        requestPasswordReset,
+        completePasswordReset,
+        resendVerification,
         logoutUser,
         updateUserProfile,
+        saveUserAddress,
+        removeUserAddress,
         activeTab,
         setActiveTab,
+        selectedShopCategory,
+        setSelectedShopCategory,
         selectedProduct,
         setSelectedProduct,
         isCartOpen,

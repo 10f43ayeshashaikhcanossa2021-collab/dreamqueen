@@ -4,19 +4,20 @@ import { ProductCard } from './ProductCard';
 import { ArrowRight, Sparkles } from 'lucide-react';
 
 export const FeaturedProducts: React.FC = () => {
-  const { products, setActiveTab } = useStore();
+  const { activeProducts, setActiveTab } = useStore();
   const [activeFilter, setActiveFilter] = useState<'all' | 'under100' | 'bestsellers' | 'hair_keychains'>('all');
 
-  const filtered = products.filter((p) => {
+  const filtered = activeProducts.filter((p) => {
     if (activeFilter === 'under100') return p.price <= 100;
     if (activeFilter === 'bestsellers') return p.isBestSeller;
-    if (activeFilter === 'hair_keychains') return p.category === 'Hair Accessories' || p.category === 'Keychains';
+    if (activeFilter === 'hair_keychains') {
+      return p.category === 'Hair Accessories' || p.category === 'Keychains';
+    }
     return true;
   });
 
   return (
     <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Section Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
         <div>
           <div className="flex items-center gap-1.5 text-xs font-semibold text-[#708238] uppercase tracking-wider mb-1">
@@ -27,11 +28,10 @@ export const FeaturedProducts: React.FC = () => {
             Featured Crochet Pieces
           </h2>
           <p className="text-sm text-[#6E6863] mt-1">
-            Hand-crocheted everyday essentials starting at just ₹50
+            Hand-crocheted everyday essentials starting at just ₹20
           </p>
         </div>
 
-        {/* Filter Pills */}
         <div className="flex items-center flex-wrap gap-2">
           {[
             { id: 'all', label: 'All Pieces' },
@@ -65,14 +65,12 @@ export const FeaturedProducts: React.FC = () => {
         </div>
       </div>
 
-      {/* Products Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {filtered.map((product, idx) => (
           <ProductCard key={`${product.id}-${idx}`} product={product} index={idx} />
         ))}
       </div>
 
-      {/* Mobile view all CTA */}
       <div className="mt-8 text-center sm:hidden">
         <button
           onClick={() => {
@@ -81,7 +79,7 @@ export const FeaturedProducts: React.FC = () => {
           }}
           className="px-6 py-3 rounded-full bg-[#5B3A29] text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 mx-auto"
         >
-          <span>Explore All 20+ Pieces</span>
+          <span>Explore All {activeProducts.length} Pieces</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

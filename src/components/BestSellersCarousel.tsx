@@ -4,10 +4,10 @@ import { ProductCard } from './ProductCard';
 import { ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 
 export const BestSellersCarousel: React.FC = () => {
-  const { products } = useStore();
+  const { activeProducts } = useStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const bestSellers = products.filter((p) => p.isBestSeller || p.rating >= 4.9);
+  const bestSellers = activeProducts.filter((p) => p.isBestSeller || p.rating >= 4.9);
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {

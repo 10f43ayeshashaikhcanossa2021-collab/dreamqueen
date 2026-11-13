@@ -4,22 +4,23 @@ import {
   X,
   Trash2,
   ShoppingBag,
-  Sparkles,
   ArrowRight,
   Tag,
-  Check,
   Truck,
-  MessageCircle
+  MessageCircle,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { safeImage } from '../utils/imageHelper';
 import { getQuickCartWhatsAppUrl } from '../utils/whatsappHelper';
+import { calculateOrderTotals } from '../utils/pricing';
 
 export const CartDrawer: React.FC = () => {
   const {
     isCartOpen,
     setIsCartOpen,
     cart,
+    products,
     removeFromCart,
     updateCartQuantity,
     cartSubtotal,
@@ -30,8 +31,7 @@ export const CartDrawer: React.FC = () => {
     storeSettings,
     setIsCheckoutOpen,
     setActiveTab,
-    currentUser,
-    openAuthModal
+    currentUser
   } = useStore();
 
   const [couponCodeInput, setCouponCodeInput] = useState('');
@@ -39,26 +39,19 @@ export const CartDrawer: React.FC = () => {
 
   if (!isCartOpen) return null;
 
-  // Shipping calculation
+  const pricing = calculateOrderTotals({
+    items: cart.map((c) => ({ price: c.product.price, quantity: c.quantity })),
+    coupon: activeCoupon,
+    settings: storeSettings,
+    paymentMethod: 'upi_qr'
+  });
+
   const isFreeShipping = cartSubtotal >= storeSettings.freeShippingThreshold;
-  const shippingFee = cartSubtotal === 0 ? 0 : isFreeShipping ? 0 : storeSettings.standardShippingFee;
-
-  // Coupon discount calculation
-  let discountAmount = 0;
-  if (activeCoupon) {
-    if (activeCoupon.discountPercent > 0) {
-      discountAmount = Math.round((cartSubtotal * activeCoupon.discountPercent) / 100);
-      if (activeCoupon.maxDiscount) {
-        discountAmount = Math.min(discountAmount, activeCoupon.maxDiscount);
-      }
-    } else if (activeCoupon.code === 'FREESHIP') {
-      discountAmount = shippingFee;
-    }
-  }
-
-  const finalTotal = Math.max(0, cartSubtotal - discountAmount + (activeCoupon?.code === 'FREESHIP' ? 0 : shippingFee));
   const amountNeededForFreeShipping = Math.max(0, storeSettings.freeShippingThreshold - cartSubtotal);
-  const progressPercent = Math.min(100, (cartSubtotal / storeSettings.freeShippingThreshold) * 100);
+  const progressPercent =
+    storeSettings.freeShippingThreshold > 0
+      ? Math.min(100, (cartSubtotal / storeSettings.freeShippingThreshold) * 100)
+      : 100;
 
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,21 +70,17 @@ export const CartDrawer: React.FC = () => {
     setIsCheckoutOpen(true);
   };
 
-  const handleQuickWhatsAppOrder = () => {
-    const url = getQuickCartWhatsAppUrl(
-      cart,
-      cartSubtotal,
-      shippingFee,
-      finalTotal,
-      currentUser?.name
-    );
-    window.open(url, '_blank');
-  };
+  const quickWhatsAppUrl = getQuickCartWhatsAppUrl(
+    cart,
+    pricing.subtotal,
+    pricing.shippingFee,
+    pricing.total,
+    currentUser?.name
+  );
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 overflow-hidden">
-        {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -108,7 +97,7 @@ export const CartDrawer: React.FC = () => {
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className="w-screen max-w-md bg-[#FDF9F4] shadow-2xl border-l border-[#EAD5C5] flex flex-col"
           >
-            {/* Drawer Header */}
+            {/* Header */}
             <div className="p-5 bg-[#FFF8F0] border-b border-[#EAD5C5] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <ShoppingBag className="w-5 h-5 text-[#5B3A29]" />
@@ -124,23 +113,24 @@ export const CartDrawer: React.FC = () => {
                 id="close-cart-btn"
                 onClick={() => setIsCartOpen(false)}
                 className="p-2 rounded-full text-[#6E6863] hover:text-[#2E2E2E] hover:bg-[#F8D7DA]/40 transition"
+                aria-label="Close basket"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Free Shipping Milestone Progress */}
+            {/* Free Shipping Progress */}
             <div className="px-5 py-3 bg-[#F4EDE5] border-b border-[#EAD5C5]/60">
               <div className="flex items-center justify-between text-xs text-[#5B3A29] mb-1.5 font-medium">
                 <div className="flex items-center gap-1.5">
                   <Truck className="w-4 h-4 text-[#708238]" />
                   <span>
                     {isFreeShipping
-                      ? '✨ You unlocked FREE 7-Day Shipping!'
-                      : `Add ₹${amountNeededForFreeShipping} more for FREE shipping!`}
+                      ? 'You unlocked FREE 7-Day Shipping!'
+                      : `Add ₹${amountNeededForFreeShipping} more for FREE shipping`}
                   </span>
                 </div>
-                <span className="font-bold">{Math.round(progressPercent)}%</span>
+                <span className="font-bold tabular-nums">{Math.round(progressPercent)}%</span>
               </div>
               <div className="w-full h-2 rounded-full bg-white overflow-hidden border border-[#EAD5C5]">
                 <div
@@ -162,7 +152,7 @@ export const CartDrawer: React.FC = () => {
                       Your basket is empty
                     </h3>
                     <p className="text-xs text-[#6E6863] mt-1 max-w-xs">
-                      Explore our handcrafted rose hair ties, keychains, and flower clips starting at ₹50.
+                      Explore handcrafted crochet hair clips, keychains, and gift charms starting at ₹20.
                     </p>
                   </div>
                   <button
@@ -176,93 +166,110 @@ export const CartDrawer: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                cart.map((item) => (
-                  <div
-                    key={`${item.product.id}-${item.selectedColor.name}`}
-                    className="flex gap-3.5 p-3.5 rounded-2xl bg-white border border-[#EAD5C5] shadow-xs"
-                  >
-                    <img
-                      src={safeImage(item.product.images?.[0])}
-                      alt={item.product.name}
-                      className="w-20 h-20 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
-                    />
+                cart.map((item) => {
+                  const latestProduct = products.find((p) => p.id === item.product.id);
+                  const maxStock = latestProduct?.stock ?? item.product.stock;
+                  const atMaxStock = item.quantity >= maxStock;
 
-                    <div className="flex-1 min-w-0 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-heading text-xs sm:text-sm font-bold text-[#2E2E2E] truncate">
-                            {item.product.name}
-                          </h4>
-                          <button
-                            onClick={() => removeFromCart(item.product.id, item.selectedColor.name)}
-                            className="text-[#9C948D] hover:text-[#C83E4D] p-1 transition"
-                            title="Remove"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                  return (
+                    <div
+                      key={`${item.product.id}-${item.selectedColor.name}`}
+                      className="flex gap-3.5 p-3.5 rounded-2xl bg-white border border-[#EAD5C5] shadow-xs"
+                    >
+                      <img
+                        src={safeImage(item.product.images?.[0])}
+                        alt={item.product.name}
+                        className="w-20 h-20 rounded-xl object-cover border border-[#EAD5C5] shrink-0"
+                      />
+
+                      <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-heading text-xs sm:text-sm font-bold text-[#2E2E2E] truncate">
+                              {item.product.name}
+                            </h4>
+                            <button
+                              onClick={() => removeFromCart(item.product.id, item.selectedColor.name)}
+                              className="text-[#6E6863] hover:text-[#C83E4D] p-1 transition"
+                              title="Remove"
+                              aria-label={`Remove ${item.product.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-[#6E6863] mt-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-gray-300"
+                                style={{ backgroundColor: item.selectedColor.hex }}
+                              />
+                              <span>{item.selectedColor.name}</span>
+                            </div>
+                            {maxStock <= 5 && (
+                              <span className="text-[10px] font-semibold text-[#855D00]">
+                                {maxStock} left
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#6E6863] mt-0.5">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full border border-gray-300"
-                            style={{ backgroundColor: item.selectedColor.hex }}
-                          />
-                          <span>{item.selectedColor.name}</span>
-                        </div>
-                      </div>
+                        <div className="flex items-center justify-between mt-2 pt-1 border-t border-[#F0DFD1]">
+                          <div className="flex items-center border border-[#EAD5C5] rounded-lg bg-[#FFF8F0] overflow-hidden">
+                            <button
+                              onClick={() =>
+                                updateCartQuantity(
+                                  item.product.id,
+                                  item.selectedColor.name,
+                                  item.quantity - 1
+                                )
+                              }
+                              className="px-2.5 py-0.5 text-xs text-[#5B3A29] hover:bg-[#F8D7DA]/50"
+                              aria-label="Decrease quantity"
+                            >
+                              -
+                            </button>
+                            <span className="px-2.5 py-0.5 font-price text-xs font-bold text-[#2E2E2E] tabular-nums">
+                              {item.quantity}
+                            </span>
+                            <button
+                              disabled={atMaxStock}
+                              onClick={() =>
+                                updateCartQuantity(
+                                  item.product.id,
+                                  item.selectedColor.name,
+                                  item.quantity + 1
+                                )
+                              }
+                              className="px-2.5 py-0.5 text-xs text-[#5B3A29] hover:bg-[#F8D7DA]/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
 
-                      <div className="flex items-center justify-between mt-2 pt-1 border-t border-[#F0DFD1]">
-                        <div className="flex items-center border border-[#EAD5C5] rounded-lg bg-[#FFF8F0] overflow-hidden">
-                          <button
-                            onClick={() =>
-                              updateCartQuantity(
-                                item.product.id,
-                                item.selectedColor.name,
-                                item.quantity - 1
-                              )
-                            }
-                            className="px-2 py-0.5 text-xs text-[#5B3A29] hover:bg-[#F8D7DA]/50"
-                          >
-                            -
-                          </button>
-                          <span className="px-2 py-0.5 font-price text-xs font-bold text-[#2E2E2E]">
-                            {item.quantity}
+                          <span className="font-price font-bold text-sm text-[#5B3A29] tabular-nums">
+                            ₹{item.product.price * item.quantity}
                           </span>
-                          <button
-                            onClick={() =>
-                              updateCartQuantity(
-                                item.product.id,
-                                item.selectedColor.name,
-                                item.quantity + 1
-                              )
-                            }
-                            className="px-2 py-0.5 text-xs text-[#5B3A29] hover:bg-[#F8D7DA]/50"
-                          >
-                            +
-                          </button>
                         </div>
-
-                        <span className="font-price font-bold text-sm text-[#5B3A29]">
-                          ₹{item.product.price * item.quantity}
-                        </span>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
-            {/* Drawer Footer (Summary & Checkout) */}
+            {/* Footer */}
             {cart.length > 0 && (
               <div className="p-5 bg-[#FFF8F0] border-t border-[#EAD5C5] space-y-4">
-                {/* Coupon Code Section */}
+                {/* Coupon Code */}
                 <div>
                   {activeCoupon ? (
                     <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#E8F0DC] border border-[#D5E5BC] text-xs text-[#4A5D1E]">
                       <div className="flex items-center gap-2">
                         <Tag className="w-4 h-4" />
                         <span>
-                          Code <strong>{activeCoupon.code}</strong> applied!
+                          Code <strong>{activeCoupon.code}</strong> applied
                         </span>
                       </div>
                       <button
@@ -289,14 +296,15 @@ export const CartDrawer: React.FC = () => {
                           Apply
                         </button>
                       </div>
-                      {couponError && (
-                        <p className="text-[11px] text-[#842029]">{couponError}</p>
-                      )}
-                      <div className="flex items-center gap-2 text-[10px] text-[#8C7A6B]">
-                        <span>Try:</span>
+                      {couponError && <p className="text-[11px] text-[#842029]">{couponError}</p>}
+                      <div className="flex items-center gap-2 text-[10px] text-[#6E6863]">
+                        <span>Quick codes:</span>
                         <button
                           type="button"
-                          onClick={() => applyCoupon('DREAM10')}
+                          onClick={() => {
+                            const res = applyCoupon('DREAM10');
+                            if (!res.success) setCouponError(res.message);
+                          }}
                           className="underline hover:text-[#5B3A29]"
                         >
                           DREAM10
@@ -304,7 +312,10 @@ export const CartDrawer: React.FC = () => {
                         <span>•</span>
                         <button
                           type="button"
-                          onClick={() => applyCoupon('FREESHIP')}
+                          onClick={() => {
+                            const res = applyCoupon('FREESHIP');
+                            if (!res.success) setCouponError(res.message);
+                          }}
                           className="underline hover:text-[#5B3A29]"
                         >
                           FREESHIP
@@ -315,57 +326,59 @@ export const CartDrawer: React.FC = () => {
                 </div>
 
                 {/* Price Breakdown */}
-                <div className="space-y-2 text-xs text-[#6E6863] pt-2 border-t border-[#EAD5C5]/60">
+                <div className="space-y-1.5 text-xs text-[#6E6863] pt-2 border-t border-[#EAD5C5]/60">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-                    <span className="font-price font-bold text-[#2E2E2E]">₹{cartSubtotal}</span>
+                    <span className="font-price font-bold text-[#2E2E2E] tabular-nums">
+                      ₹{pricing.subtotal}
+                    </span>
                   </div>
 
-                  {discountAmount > 0 && (
-                    <div className="flex justify-between text-[#708238]">
-                      <span>Handmade Discount</span>
-                      <span className="font-price font-bold">-₹{discountAmount}</span>
+                  {pricing.discount > 0 && (
+                    <div className="flex justify-between text-[#4A5D1E]">
+                      <span>Coupon Discount</span>
+                      <span className="font-price font-bold tabular-nums">-₹{pricing.discount}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between">
                     <span>Shipping (7-Day Delivery)</span>
-                    <span className="font-price font-bold text-[#2E2E2E]">
-                      {shippingFee === 0 ? (
-                        <span className="text-[#708238]">FREE</span>
+                    <span className="font-price font-bold text-[#2E2E2E] tabular-nums">
+                      {pricing.shippingFee === 0 ? (
+                        <span className="text-[#4A5D1E]">FREE</span>
                       ) : (
-                        `₹${shippingFee}`
+                        `₹${pricing.shippingFee}`
                       )}
                     </span>
                   </div>
 
                   <div className="flex justify-between text-sm font-bold text-[#5B3A29] pt-2 border-t border-[#EAD5C5]">
                     <span>Estimated Total</span>
-                    <span className="font-price text-lg">₹{finalTotal}</span>
+                    <span className="font-price text-lg tabular-nums">₹{pricing.total}</span>
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Checkout + WhatsApp */}
                 <div className="space-y-2 pt-1">
                   <button
                     id="cart-checkout-btn"
                     onClick={handleProceedToCheckout}
-                    className="w-full py-3.5 px-4 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-sm shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3.5 px-4 rounded-full bg-[#5B3A29] hover:bg-[#43291B] text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 fill-white" />
-                    <span>Send Order to WhatsApp (8097706536)</span>
+                    <Lock className="w-4 h-4" />
+                    <span>Proceed to Checkout • ₹{pricing.total}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleQuickWhatsAppOrder}
-                    className="w-full py-2.5 px-4 rounded-full bg-[#FFF8F0] hover:bg-[#F8EFE7] text-[#5B3A29] border border-[#EAD5C5] text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    title="Send cart items immediately to WhatsApp without filling address form"
+                  <a
+                    href={quickWhatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-4 rounded-full bg-[#E8F5E9] hover:bg-[#D6EED8] text-[#1E7E34] border border-[#C8E6C9] text-xs font-semibold transition flex items-center justify-center gap-1.5"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[#8B4052]" />
-                    <span>Quick 1-Click WhatsApp Order (Skip Address Form)</span>
-                  </button>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Quick Inquiry on WhatsApp (8097706536)</span>
+                  </a>
 
                   <button
                     onClick={() => setIsCartOpen(false)}

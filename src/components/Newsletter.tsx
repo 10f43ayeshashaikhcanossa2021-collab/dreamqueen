@@ -1,26 +1,51 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
-import { Sparkles, Send, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Send, CheckCircle2, Loader2 } from 'lucide-react';
+import { isValidEmail } from '../utils/pricing';
 
 export const Newsletter: React.FC = () => {
   const { showToast } = useStore();
   const [email, setEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    const cleaned = email.trim().toLowerCase();
+    if (!isValidEmail(cleaned)) {
       showToast('Please enter a valid email address', 'error');
       return;
     }
-    setIsSubscribed(true);
-    showToast('Subscribed! Use code DREAM10 at checkout for 10% off ✨');
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleaned })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data?.error || 'Could not complete subscription right now.', 'error');
+        return;
+      }
+
+      setIsSubscribed(true);
+      if (data.alreadySubscribed) {
+        showToast('You are already subscribed! Use code DREAM10 at checkout.');
+      } else {
+        showToast('Subscribed! Use code DREAM10 at checkout for 10% off.');
+      }
+    } catch {
+      showToast('Network error while subscribing. Please try again.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <section className="py-16 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="relative rounded-3xl bg-gradient-to-r from-[#FFF8F0] via-[#FDF3E7] to-[#FCECEE] p-8 sm:p-12 border border-[#EAD5C5] shadow-sm text-center overflow-hidden">
-        {/* Ambient background sparkle */}
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#F8D7DA]/60 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-[#FFF3A8]/40 rounded-full blur-2xl pointer-events-none" />
 
@@ -57,16 +82,26 @@ export const Newsletter: React.FC = () => {
               />
               <button
                 type="submit"
-                className="px-6 py-3 rounded-full bg-[#5B3A29] hover:bg-[#43291B] text-white font-medium text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 shrink-0"
+                disabled={isSubmitting}
+                className="px-6 py-3 rounded-full bg-[#5B3A29] hover:bg-[#43291B] disabled:opacity-60 text-white font-medium text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
               >
-                <span>Subscribe</span>
-                <Send className="w-3.5 h-3.5" />
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Joining...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Subscribe</span>
+                    <Send className="w-3.5 h-3.5" />
+                  </>
+                )}
               </button>
             </form>
           )}
 
           <p className="text-[11px] text-[#9C948D] mt-3">
-            No spam, ever. Only cozy crochet love & discount gifts. Unsubscribe anytime.
+            No spam, ever. Only cozy crochet love &amp; discount gifts. Unsubscribe anytime.
           </p>
         </div>
       </div>

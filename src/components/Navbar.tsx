@@ -26,10 +26,9 @@ export const Navbar: React.FC = () => {
     setIsCartOpen,
     setIsUpiScannerOpen,
     currentUser,
-    loginUser,
     logoutUser,
     openAuthModal,
-    products,
+    activeProducts,
     setSelectedProduct
   } = useStore();
 
@@ -39,7 +38,6 @@ export const Navbar: React.FC = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input when search bar opens
   useEffect(() => {
     if (isSearchOpen && searchInputRef.current) {
       searchInputRef.current.focus();
@@ -47,7 +45,7 @@ export const Navbar: React.FC = () => {
   }, [isSearchOpen]);
 
   const searchResults = searchQuery.trim()
-    ? products.filter(
+    ? activeProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -55,21 +53,29 @@ export const Navbar: React.FC = () => {
       )
     : [];
 
-  const handleProductSelect = (product: typeof products[0]) => {
+  const handleProductSelect = (product: typeof activeProducts[0]) => {
     setSelectedProduct(product);
     setIsSearchOpen(false);
     setSearchQuery('');
   };
 
+  const navLinks = [
+    { id: 'home', label: 'Home' },
+    { id: 'shop', label: 'Shop All' },
+    { id: 'custom', label: 'Custom Orders' },
+    { id: 'track', label: 'Track Order' },
+    { id: 'contact', label: 'Contact' }
+  ];
+
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FDF9F4]/95 backdrop-blur-md border-b border-[#EAD5C5]/60 transition-all">
       {/* Top Announcement Bar */}
       <div className="bg-[#FFF8F0] border-b border-[#F0DFD1] py-1.5 px-4 text-xs font-medium text-[#5B3A29] flex items-center justify-center gap-2 text-center">
-        <Sparkles className="w-3.5 h-3.5 text-[#D4A017] shrink-0 animate-pulse" />
+        <Sparkles className="w-3.5 h-3.5 text-[#D4A017] shrink-0" />
         <span>
           <strong>Handmade with Love:</strong> Free shipping across India on orders over ₹499 • 7 Days Delivery Guarantee
         </span>
-        <span className="hidden sm:inline text-[#D4A017]">• 100% Milk Cotton Yarn</span>
+        <span className="hidden sm:inline text-[#708238]">• ₹20 Flat Shipping Under ₹499</span>
       </div>
 
       {/* Main Navbar */}
@@ -113,12 +119,7 @@ export const Navbar: React.FC = () => {
 
           {/* Desktop Navigation Links */}
           <nav className="hidden lg:flex items-center space-x-1 xl:space-x-2">
-            {[
-              { id: 'home', label: 'Home' },
-              { id: 'shop', label: 'Shop All' },
-              { id: 'custom', label: 'Custom Orders' },
-              { id: 'contact', label: 'About & Contact' }
-            ].map((item) => (
+            {navLinks.map((item) => (
               <button
                 key={item.id}
                 id={`nav-link-${item.id}`}
@@ -126,7 +127,7 @@ export const Navbar: React.FC = () => {
                   setActiveTab(item.id as any);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`px-3.5 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                   activeTab === item.id
                     ? 'bg-[#5B3A29] text-white shadow-sm'
                     : 'text-[#2E2E2E] hover:text-[#5B3A29] hover:bg-[#FFF8F0]'
@@ -135,6 +136,24 @@ export const Navbar: React.FC = () => {
                 {item.label}
               </button>
             ))}
+
+            {currentUser?.role === 'admin' && (
+              <button
+                id="nav-link-admin"
+                onClick={() => {
+                  setActiveTab('admin');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1 transition-all ${
+                  activeTab === 'admin'
+                    ? 'bg-[#708238] text-white shadow-sm'
+                    : 'bg-[#E8F0DC] text-[#3B4C16] hover:bg-[#D5E5BC]'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin</span>
+              </button>
+            )}
           </nav>
 
           {/* Right Action Icons */}
@@ -150,7 +169,6 @@ export const Navbar: React.FC = () => {
                 <Search className="w-5 h-5" />
               </button>
 
-              {/* Instant Search Dropdown */}
               <AnimatePresence>
                 {isSearchOpen && (
                   <motion.div
@@ -179,7 +197,6 @@ export const Navbar: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Autocomplete Results */}
                     {searchQuery.trim() && (
                       <div className="mt-3 max-h-64 overflow-y-auto space-y-1.5 pr-1">
                         {searchResults.length > 0 ? (
@@ -217,7 +234,7 @@ export const Navbar: React.FC = () => {
               </AnimatePresence>
             </div>
 
-            {/* UPI QR Scanner quick button */}
+            {/* UPI QR quick button */}
             <button
               id="upi-qr-scanner-nav-btn"
               type="button"
@@ -226,7 +243,7 @@ export const Navbar: React.FC = () => {
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] text-[#5B3A29] hover:bg-[#F8D7DA]/40 transition text-xs font-semibold"
             >
               <QrCode className="w-4 h-4 text-[#708238]" />
-              <span className="hidden xl:inline">UPI Scanner</span>
+              <span className="hidden xl:inline">UPI QR</span>
             </button>
 
             {/* Wishlist Icon */}
@@ -262,7 +279,7 @@ export const Navbar: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span className="hidden md:inline font-price text-xs font-bold">
+              <span className="hidden md:inline font-price text-xs font-bold tabular-nums">
                 ₹{cartSubtotal}
               </span>
             </button>
@@ -289,12 +306,12 @@ export const Navbar: React.FC = () => {
                     {currentUser ? (
                       <div className="p-2.5 border-b border-[#EAD5C5] mb-1">
                         <p className="text-xs font-bold text-[#2E2E2E] truncate">{currentUser.name}</p>
-                        <p className="text-[11px] text-[#8C7A6B] truncate">{currentUser.email}</p>
+                        <p className="text-[11px] text-[#6E6863] truncate">{currentUser.email}</p>
                       </div>
                     ) : (
                       <div className="p-2.5 border-b border-[#EAD5C5] mb-1">
                         <p className="text-xs font-semibold text-[#5B3A29]">Guest Shopper</p>
-                        <p className="text-[11px] text-[#8C7A6B] mt-0.5">Browse freely or log in</p>
+                        <p className="text-[11px] text-[#6E6863] mt-0.5">Browse freely or sign in</p>
                         <button
                           onClick={() => {
                             setIsUserMenuOpen(false);
@@ -317,6 +334,19 @@ export const Navbar: React.FC = () => {
                       <UserIcon className="w-4 h-4 text-[#5B3A29]" />
                       My Orders & Profile
                     </button>
+
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => {
+                          setActiveTab('admin');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-[#4A5D1E] hover:bg-[#E8F0DC]/60 rounded-xl transition"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-[#708238]" />
+                        Admin Studio Panel
+                      </button>
+                    )}
 
                     {currentUser && (
                       <button
@@ -352,8 +382,12 @@ export const Navbar: React.FC = () => {
                 { id: 'home', label: 'Home' },
                 { id: 'shop', label: 'Shop All Crochet' },
                 { id: 'custom', label: 'Custom Crochet Orders' },
+                { id: 'track', label: 'Track Order' },
                 { id: 'customer', label: 'My Account & Orders' },
-                { id: 'contact', label: 'About & Contact' }
+                { id: 'contact', label: 'About & Contact' },
+                ...(currentUser?.role === 'admin'
+                  ? [{ id: 'admin', label: 'Studio Admin Dashboard' }]
+                  : [])
               ].map((item) => (
                 <button
                   key={item.id}
@@ -372,31 +406,13 @@ export const Navbar: React.FC = () => {
                   <ChevronRight className="w-4 h-4 opacity-70" />
                 </button>
               ))}
-              {/* Quick Scan to Pay Mobile Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsUpiScannerOpen(true);
-                  setIsMobileMenuOpen(false);
-                }}
-                className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold bg-[#E8F0DC] text-[#4A5D1E] border border-[#D5E2C4]"
-              >
-                <div className="flex items-center gap-2">
-                  <QrCode className="w-4 h-4 text-[#708238]" />
-                  <span>Scan to Pay (India Post QR)</span>
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded-md border border-[#D5E2C4]">
-                  UPI
-                </span>
-              </button>
 
-              {/* Mobile User Authentication Status */}
               <div className="pt-2 border-t border-[#EAD5C5]">
                 {currentUser ? (
                   <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#EAD5C5]">
                     <div>
                       <p className="text-xs font-bold text-[#2E2E2E]">{currentUser.name}</p>
-                      <p className="text-[11px] text-[#8C7A6B]">{currentUser.email}</p>
+                      <p className="text-[11px] text-[#6E6863]">{currentUser.email}</p>
                     </div>
                     <button
                       onClick={() => {

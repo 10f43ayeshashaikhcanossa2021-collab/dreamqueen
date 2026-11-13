@@ -1,5 +1,6 @@
 import React from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { CategoryList } from './components/CategoryList';
@@ -18,27 +19,38 @@ import { ItemFeedbackModal } from './components/ItemFeedbackModal';
 import { UpiScannerModal } from './components/UpiScannerModal';
 import { ToastContainer } from './components/ToastContainer';
 
-// Pages
 import { ShopPage } from './pages/ShopPage';
 import { CustomOrderPage } from './pages/CustomOrderPage';
 import { CustomerDashboard } from './pages/CustomerDashboard';
 import { ContactPage } from './pages/ContactPage';
+import { OrderTrackingPage } from './pages/OrderTrackingPage';
+import { AdminDashboard } from './pages/AdminDashboard';
+import { PolicyPages } from './pages/PolicyPages';
 
-import { MessageCircle, Heart, ArrowUp } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, isUpiScannerOpen, setIsUpiScannerOpen } = useStore();
+  const { activeTab, setActiveTab, isUpiScannerOpen, setIsUpiScannerOpen } = useStore();
 
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const knownTabs = new Set([
+    'home',
+    'shop',
+    'custom',
+    'track',
+    'customer',
+    'contact',
+    'admin',
+    'privacy',
+    'terms',
+    'shipping',
+    'refunds'
+  ]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FDF9F4] text-[#2E2E2E] selection:bg-[#F8D7DA] selection:text-[#5B3A29]">
       <ToastContainer />
       <Navbar />
 
-      {/* Main View Router */}
       <main className="flex-1">
         {activeTab === 'home' && (
           <>
@@ -55,13 +67,30 @@ const MainLayout: React.FC = () => {
 
         {activeTab === 'shop' && <ShopPage />}
         {activeTab === 'custom' && <CustomOrderPage />}
+        {activeTab === 'track' && <OrderTrackingPage />}
         {activeTab === 'customer' && <CustomerDashboard />}
         {activeTab === 'contact' && <ContactPage />}
+        {activeTab === 'admin' && <AdminDashboard />}
+        {(activeTab === 'privacy' ||
+          activeTab === 'terms' ||
+          activeTab === 'shipping' ||
+          activeTab === 'refunds') && <PolicyPages policyType={activeTab} />}
+
+        {!knownTabs.has(activeTab) && (
+          <div className="py-20 text-center space-y-4">
+            <h2 className="font-heading text-2xl font-bold text-[#5B3A29]">Page Not Found</h2>
+            <button
+              onClick={() => setActiveTab('home')}
+              className="px-6 py-2.5 rounded-full bg-[#5B3A29] text-white text-xs font-semibold"
+            >
+              Return Home
+            </button>
+          </div>
+        )}
       </main>
 
       <Footer />
 
-      {/* Global Modals & Slide-Overs */}
       <CartDrawer />
       <ProductDetailModal />
       <CheckoutModal />
@@ -72,7 +101,6 @@ const MainLayout: React.FC = () => {
         onClose={() => setIsUpiScannerOpen(false)}
       />
 
-      {/* Floating Artisan WhatsApp Direct Button */}
       <a
         href="https://wa.me/918097706536?text=Hi%20DreamQueen%20Atelier!%20I'm%20interested%20in%20handmade%20crochet."
         target="_blank"
@@ -91,8 +119,10 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <MainLayout />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <MainLayout />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }

@@ -3,16 +3,14 @@ import { useStore } from '../context/StoreContext';
 import {
   Sparkles,
   Upload,
-  Heart,
-  Palette,
-  Ruler,
-  Calendar,
-  IndianRupee,
   MessageCircle,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { safeImage } from '../utils/imageHelper';
+import { uploadImageToBucket, validateImageUploadFile } from '../lib/supabase';
+import { isValidIndianPhone } from '../utils/pricing';
 
 export const CustomOrderPage: React.FC = () => {
   const { submitCustomOrder, currentUser, openAuthModal, showToast } = useStore();
@@ -28,8 +26,9 @@ export const CustomOrderPage: React.FC = () => {
   const [referenceImageUrl, setReferenceImageUrl] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync inputs if user registers or logs in
   React.useEffect(() => {
     if (currentUser) {
       if (!customerName) setCustomerName(currentUser.name);
@@ -38,27 +37,55 @@ export const CustomOrderPage: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Sample quick inspiration images
   const sampleInspirations = [
     '/assets/aistudio/rose_bag_crochet____dm_to_order_on_8097706536_e6644b1f.jpg',
     '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.38_PM_51e04cb2.jpeg',
     '/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.37_PM__1__b69ab62b.jpeg'
   ];
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Mock local URL or base64
-      const objectUrl = URL.createObjectURL(file);
-      setReferenceImageUrl(objectUrl);
-      showToast('Reference image selected! 🌸');
+    if (!file) return;
+
+    const validationError = validateImageUploadFile(file);
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+
+    if (!currentUser) {
+      showToast('Please sign in first to upload a custom reference image.', 'info');
+      openAuthModal('custom_order');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { publicUrl, error } = await uploadImageToBucket(
+        'custom-order-references',
+        file,
+        currentUser.id
+      );
+      if (error || !publicUrl) {
+        showToast(error || 'Upload failed. Ensure custom-order-references bucket exists.', 'error');
+        return;
+      }
+      setReferenceImageUrl(publicUrl);
+      showToast('Reference image uploaded to studio storage!');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName || !phone || !message) {
+    if (!customerName.trim() || !phone.trim() || !message.trim()) {
       showToast('Please fill all required fields', 'error');
+      return;
+    }
+    if (!isValidIndianPhone(phone)) {
+      showToast('Please enter a valid 10-digit Indian WhatsApp number', 'error');
       return;
     }
 
@@ -68,26 +95,31 @@ export const CustomOrderPage: React.FC = () => {
       return;
     }
 
-    submitCustomOrder({
-      customerName,
-      email,
-      phone,
-      category,
-      colorPreference,
-      size,
-      budget,
-      deliveryDatePreference,
-      referenceImageUrl: referenceImageUrl || sampleInspirations[0],
-      message
-    });
+    setIsSubmitting(true);
+    try {
+      await submitCustomOrder({
+        userId: currentUser.id,
+        customerName: customerName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        category,
+        colorPreference,
+        size,
+        budget,
+        deliveryDatePreference,
+        referenceImageUrl: referenceImageUrl || sampleInspirations[0],
+        message: message.trim()
+      });
 
-    setIsSubmitted(true);
-    showToast('Custom inquiry received! Our artisan will WhatsApp you within 2 hours 💕');
+      setIsSubmitted(true);
+      showToast('Custom inquiry received! Our artisan will WhatsApp you within 2 hours.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="py-12 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Header */}
       <div className="text-center max-w-2xl mx-auto mb-10">
         <span className="text-xs font-handwriting text-2xl text-[#708238] block font-semibold">
           Artisan Atelier
@@ -119,7 +151,9 @@ export const CustomOrderPage: React.FC = () => {
 
           <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://wa.me/918097706536?text=Hi%20DreamQueen,%20I%20just%20submitted%20a%20custom%20crochet%20order%20for%20${customerName}!`}
+              href={`https://wa.me/918097706536?text=${encodeURIComponent(
+                `Hi DreamQueen, I just submitted a custom crochet order for ${customerName}!`
+              )}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#25D366] text-white text-xs font-semibold hover:bg-[#1EBE5D] transition shadow-xs"
@@ -130,7 +164,7 @@ export const CustomOrderPage: React.FC = () => {
 
             <button
               onClick={() => setIsSubmitted(false)}
-              className="px-6 py-3 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] text-[#5B3A29] text-xs font-semibold hover:bg-[#F8D7DA]/40 transition"
+              className="px-6 py-3 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] text-[#5B3A29] text-xs font-semibold hover:bg-[#F8D7DA]/40 transition cursor-pointer"
             >
               Submit Another Idea
             </button>
@@ -141,7 +175,6 @@ export const CustomOrderPage: React.FC = () => {
           onSubmit={handleSubmit}
           className="bg-white rounded-3xl border border-[#EAD5C5] shadow-md p-6 sm:p-10 space-y-6"
         >
-          {/* Section 1: Customer Contact */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#708238] mb-3">
               1. Your Contact Information
@@ -188,7 +221,6 @@ export const CustomOrderPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Reference Image Upload & Selection */}
           <div className="pt-4 border-t border-[#F0DFD1]">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#708238] mb-3">
               2. Reference Picture / Inspiration
@@ -197,17 +229,22 @@ export const CustomOrderPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
               <div>
                 <label className="block p-4 rounded-2xl border-2 border-dashed border-[#EAD5C5] bg-[#FFF8F0] hover:bg-[#F8D7DA]/30 cursor-pointer text-center transition">
-                  <Upload className="w-6 h-6 text-[#5B3A29] mx-auto mb-1.5" />
+                  {isUploading ? (
+                    <Loader2 className="w-6 h-6 text-[#5B3A29] mx-auto mb-1.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-6 h-6 text-[#5B3A29] mx-auto mb-1.5" />
+                  )}
                   <span className="text-xs font-semibold text-[#5B3A29] block">
-                    Upload Reference Screenshot or Photo
+                    {isUploading ? 'Uploading to Storage...' : 'Upload Reference Screenshot or Photo'}
                   </span>
                   <span className="text-[10px] text-[#8C7A6B]">
-                    Drag & drop or click to browse (PNG, JPG)
+                    JPG, PNG or WEBP up to 5 MB
                   </span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={handleFileUpload}
+                    disabled={isUploading}
                     className="hidden"
                   />
                 </label>
@@ -215,11 +252,11 @@ export const CustomOrderPage: React.FC = () => {
                 {Boolean(referenceImageUrl?.trim()) && (
                   <div className="mt-2 flex items-center gap-2">
                     <img
-                      src={referenceImageUrl}
+                      src={safeImage(referenceImageUrl)}
                       alt="Uploaded Reference"
                       className="w-12 h-12 rounded-lg object-cover border border-[#EAD5C5]"
                     />
-                    <span className="text-xs text-[#708238] font-medium">Image attached</span>
+                    <span className="text-xs text-[#708238] font-medium">Reference image attached</span>
                   </div>
                 )}
               </div>
@@ -234,7 +271,7 @@ export const CustomOrderPage: React.FC = () => {
                       key={i}
                       type="button"
                       onClick={() => setReferenceImageUrl(img)}
-                      className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition ${
+                      className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
                         referenceImageUrl === img
                           ? 'border-[#5B3A29] scale-105'
                           : 'border-[#EAD5C5] opacity-75'
@@ -248,7 +285,6 @@ export const CustomOrderPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 3: Design Specs */}
           <div className="pt-4 border-t border-[#F0DFD1] space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#708238] mb-1">
               3. Design Specifications
@@ -331,7 +367,6 @@ export const CustomOrderPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 4: Detailed Message */}
           <div className="pt-4 border-t border-[#F0DFD1]">
             <label className="block text-xs font-semibold text-[#55504C] mb-1">
               Tell the Artisan About Your Vision *
@@ -346,18 +381,22 @@ export const CustomOrderPage: React.FC = () => {
             />
           </div>
 
-          {/* Submit */}
-          <div className="pt-4 flex items-center justify-between">
+          <div className="pt-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
             <p className="text-[11px] text-[#8C7A6B]">
-              No advance required until you approve the yarn sample & design quote.
+              No advance required until you approve the yarn sample &amp; design quote.
             </p>
 
             <button
               type="submit"
-              className="px-8 py-3.5 rounded-full bg-[#5B3A29] hover:bg-[#43291B] text-white text-xs sm:text-sm font-semibold shadow-md transition flex items-center gap-2"
+              disabled={isSubmitting || isUploading}
+              className="px-8 py-3.5 rounded-full bg-[#5B3A29] hover:bg-[#43291B] disabled:opacity-60 text-white text-xs sm:text-sm font-semibold shadow-md transition flex items-center gap-2 cursor-pointer"
             >
-              <Sparkles className="w-4 h-4 text-[#D4A017]" />
-              <span>Submit Custom Request</span>
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 text-[#D4A017]" />
+              )}
+              <span>{isSubmitting ? 'Submitting...' : 'Submit Custom Request'}</span>
             </button>
           </div>
         </form>

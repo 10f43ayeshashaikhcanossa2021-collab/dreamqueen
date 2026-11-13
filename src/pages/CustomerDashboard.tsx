@@ -36,7 +36,6 @@ export const CustomerDashboard: React.FC = () => {
     toggleWishlist,
     addToCart,
     setActiveTab,
-    setTrackingSearchId,
     updateUserProfile,
     logoutUser,
     loginUser,
@@ -309,15 +308,11 @@ export const CustomerDashboard: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setTrackingSearchId(ord.orderNumber);
-                              setActiveTab('track');
-                            }}
-                            className="px-4 py-1.5 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] text-xs font-semibold text-[#5B3A29] hover:bg-[#F8D7DA]/40 transition"
-                          >
-                            Live Tracking
-                          </button>
+                          {ord.shiprocketTrackingNumber && (
+                            <span className="px-3 py-1 rounded-full bg-[#FFF8F0] border border-[#EAD5C5] text-[11px] font-mono font-semibold text-[#5B3A29]">
+                              {ord.shiprocketTrackingNumber}
+                            </span>
+                          )}
                           <button
                             onClick={() => handleDownloadInvoice(ord.orderNumber)}
                             className="p-2 rounded-full text-[#6E6863] hover:text-[#2E2E2E] hover:bg-[#FFF8F0]"

@@ -20,7 +20,6 @@ import { ToastContainer } from './components/ToastContainer';
 
 // Pages
 import { ShopPage } from './pages/ShopPage';
-import { OrderTrackingPage } from './pages/OrderTrackingPage';
 import { CustomOrderPage } from './pages/CustomOrderPage';
 import { CustomerDashboard } from './pages/CustomerDashboard';
 import { ContactPage } from './pages/ContactPage';
@@ -55,7 +54,6 @@ const MainLayout: React.FC = () => {
         )}
 
         {activeTab === 'shop' && <ShopPage />}
-        {activeTab === 'track' && <OrderTrackingPage />}
         {activeTab === 'custom' && <CustomOrderPage />}
         {activeTab === 'customer' && <CustomerDashboard />}
         {activeTab === 'contact' && <ContactPage />}

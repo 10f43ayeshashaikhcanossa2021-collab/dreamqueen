@@ -127,7 +127,7 @@ export const ContactPage: React.FC = () => {
             </p>
           </div>
           <div className="text-xs font-semibold text-[#708238] py-2">
-            Studio in Mumbai & Pune, India
+            Room No. 30, Building No. 47, Anarya Co. Op. Housing Society, Mahim (East)
           </div>
         </div>
       </div>

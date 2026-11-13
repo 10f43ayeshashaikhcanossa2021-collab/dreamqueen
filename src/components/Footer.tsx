@@ -98,7 +98,7 @@ export const Footer: React.FC = () => {
                 <MessageCircle className="w-4 h-4" />
               </a>
               <a
-                href="mailto:dreamqueen29@gmail.com"
+                href="mailto:ayeshalk2025@gmail.com"
                 className="p-2.5 rounded-full bg-white border border-[#EAD5C5] text-[#5B3A29] hover:bg-[#FFF8F0] transition shadow-xs"
                 aria-label="Email"
               >
@@ -176,17 +176,6 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => {
-                    setActiveTab('track');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#5B3A29] hover:underline font-semibold text-[#708238]"
-                >
-                  Track Your Order (7 Days)
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => {
                     setActiveTab('customer');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
@@ -237,12 +226,12 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2.5 text-xs text-[#55504C]">
               <li className="flex items-start gap-2">
                 <MapPin className="w-3.5 h-3.5 text-[#5B3A29] shrink-0 mt-0.5" />
-                <span>Handmade Atelier, Mumbai & Pune, India</span>
+                <span>Room No. 30, Building No. 47, Anarya Co. Op. Housing Society, Mahim (East)</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-[#5B3A29] shrink-0" />
-                <a href="mailto:dreamqueen29@gmail.com" className="hover:text-[#5B3A29] hover:underline">
-                  dreamqueen29@gmail.com
+                <a href="mailto:ayeshalk2025@gmail.com" className="hover:text-[#5B3A29] hover:underline">
+                  ayeshalk2025@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-2">

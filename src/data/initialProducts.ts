@@ -221,7 +221,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     reviewsCount: 49,
     category: 'Hair Accessories',
     stock: 25,
-    images: ['/assets/aistudio/WhatsApp_Image_2026-11-10_at_6.57.34_PM_0028ca0c.jpeg'],
+    images: ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png'],
     colors: [{ name: 'Scarlet Red with Pearl', hex: '#D32F2F' }],
     description:
       'Handcrafted with intricate layered petals by DreamQueen. Accented by twin emerald leaves and a lustrous round pearl firmly stitched into the blossom center. Comes with sturdy woven loops for hair styling, bag charms, or gift packaging.',

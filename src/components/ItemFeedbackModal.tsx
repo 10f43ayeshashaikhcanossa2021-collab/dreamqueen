@@ -130,7 +130,7 @@ export const ItemFeedbackModal: React.FC = () => {
       productImage: resolveItemImage(item.productId, item.image),
       selectedColor: item.color,
       customerName: currentUser?.name || order.customer.name || 'Valued Customer',
-      customerEmail: currentUser?.email || order.customer.email || 'dreamqueen29@gmail.com',
+      customerEmail: currentUser?.email || order.customer.email || 'ayeshalk2025@gmail.com',
       rating,
       headline: headline.trim() || 'Handmade Crochet Feedback',
       comment: comment.trim(),

@@ -103,8 +103,8 @@ interface StoreContextType {
   logoutUser: () => void;
   updateUserProfile: (name: string, phone: string) => void;
 
-  activeTab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact';
-  setActiveTab: (tab: 'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact') => void;
+  activeTab: 'home' | 'shop' | 'custom' | 'customer' | 'contact';
+  setActiveTab: (tab: 'home' | 'shop' | 'custom' | 'customer' | 'contact') => void;
 
   selectedProduct: Product | null;
   setSelectedProduct: (product: Product | null) => void;
@@ -117,9 +117,6 @@ interface StoreContextType {
 
   isUpiScannerOpen: boolean;
   setIsUpiScannerOpen: (val: boolean) => void;
-
-  trackingSearchId: string;
-  setTrackingSearchId: (id: string) => void;
 
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -140,7 +137,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   standardShippingFee: 20,
   shiprocketApiKey: 'sr_live_demo_984180410',
   supportPhone: '8097706536',
-  supportEmail: 'dreamqueen29@gmail.com',
+  supportEmail: 'ayeshalk2025@gmail.com',
   pinterestUrl: 'https://in.pinterest.com/ayeshalk2025/?actingBusinessId=1147221842487308120',
   pinterestHandle: 'ayeshalk2025',
   upiId: '8097706536@postbank',
@@ -170,7 +167,7 @@ const DEFAULT_USER: User = {
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('dreamqueen_products_v6');
+      const saved = localStorage.getItem('dreamqueen_products_v7');
       if (saved) {
         const parsed: Product[] = JSON.parse(saved);
         if (
@@ -181,7 +178,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return parsed;
         }
       }
-      localStorage.setItem('dreamqueen_products_v6', JSON.stringify(INITIAL_PRODUCTS));
+      localStorage.setItem('dreamqueen_products_v7', JSON.stringify(INITIAL_PRODUCTS));
       return INITIAL_PRODUCTS;
     } catch {
       return INITIAL_PRODUCTS;
@@ -286,7 +283,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               ? 10
               : parsed.codFee,
           supportPhone: '8097706536',
-          supportEmail: 'dreamqueen29@gmail.com',
+          supportEmail: 'ayeshalk2025@gmail.com',
           upiId: '8097706536@postbank',
           upiPayeeName: 'AYESHA LUKMAN SHAIKH'
         };
@@ -320,12 +317,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAuthModalOpen(true);
   };
 
-  const [activeTab, setActiveTab] = useState<'home' | 'shop' | 'custom' | 'track' | 'customer' | 'contact'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'shop' | 'custom' | 'customer' | 'contact'>('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isUpiScannerOpen, setIsUpiScannerOpen] = useState(false);
-  const [trackingSearchId, setTrackingSearchId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
   const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
@@ -338,11 +334,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const liveProducts = await fetchProductsFromSupabase();
         if (liveProducts && liveProducts.length > 0) {
-          const validLive = liveProducts.filter((p) => p.images?.[0]?.startsWith('/assets/aistudio/'));
+          const validLive = liveProducts
+            .filter((p) => p.images?.[0]?.startsWith('/assets/aistudio/'))
+            .map((p) =>
+              p.id === 'prod-pearl-rose-charm'
+                ? { ...p, images: ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png'] }
+                : p
+            );
           if (validLive.length > 0) {
             setProducts(validLive);
             try {
-              localStorage.setItem('dreamqueen_products_v6', JSON.stringify(validLive));
+              localStorage.setItem('dreamqueen_products_v7', JSON.stringify(validLive));
             } catch {}
           }
         }
@@ -545,6 +547,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Sync to localStorage
   useEffect(() => {
     try {
+      localStorage.setItem('dreamqueen_products_v7', JSON.stringify(products));
       localStorage.setItem('dreamqueen_products_v6', JSON.stringify(products));
       localStorage.setItem('dreamqueen_products_v5', JSON.stringify(products));
       localStorage.setItem('dreamqueen_products_v4', JSON.stringify(products));
@@ -1192,8 +1195,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsCheckoutOpen,
         isUpiScannerOpen,
         setIsUpiScannerOpen,
-        trackingSearchId,
-        setTrackingSearchId,
         searchQuery,
         setSearchQuery,
         toasts,

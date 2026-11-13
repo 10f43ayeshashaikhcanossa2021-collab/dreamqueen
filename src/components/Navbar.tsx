@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   ChevronRight,
   LogOut,
-  Package,
   QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -118,7 +117,6 @@ export const Navbar: React.FC = () => {
               { id: 'home', label: 'Home' },
               { id: 'shop', label: 'Shop All' },
               { id: 'custom', label: 'Custom Orders' },
-              { id: 'track', label: 'Track Order' },
               { id: 'contact', label: 'About & Contact' }
             ].map((item) => (
               <button
@@ -320,17 +318,6 @@ export const Navbar: React.FC = () => {
                       My Orders & Profile
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setActiveTab('track');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#2E2E2E] hover:bg-[#FDF9F4] rounded-xl transition"
-                    >
-                      <Package className="w-4 h-4 text-[#5B3A29]" />
-                      Track My Order
-                    </button>
-
                     {currentUser && (
                       <button
                         onClick={() => {
@@ -365,7 +352,6 @@ export const Navbar: React.FC = () => {
                 { id: 'home', label: 'Home' },
                 { id: 'shop', label: 'Shop All Crochet' },
                 { id: 'custom', label: 'Custom Crochet Orders' },
-                { id: 'track', label: 'Track Order' },
                 { id: 'customer', label: 'My Account & Orders' },
                 { id: 'contact', label: 'About & Contact' }
               ].map((item) => (

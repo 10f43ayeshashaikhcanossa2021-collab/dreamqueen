@@ -39,7 +39,6 @@ export const CheckoutModal: React.FC = () => {
     createOrder,
     currentUser,
     setActiveTab,
-    setTrackingSearchId,
     showToast
   } = useStore();
 
@@ -124,7 +123,7 @@ export const CheckoutModal: React.FC = () => {
       const order = createOrder({
         customer: {
           name: address.fullName?.trim() || currentUser?.name || 'Valued Customer',
-          email: address.email?.trim() || currentUser?.email || 'dreamqueen29@gmail.com',
+          email: address.email?.trim() || currentUser?.email || 'ayeshalk2025@gmail.com',
           phone: address.phone?.trim() || currentUser?.phone || '8097706536'
         },
         shippingAddress: {
@@ -909,17 +908,17 @@ export const CheckoutModal: React.FC = () => {
                 )}
 
                 <div className="flex flex-col sm:flex-row w-full gap-2">
-                  <button
-                    id="track-new-order-btn"
-                    onClick={() => {
-                      setTrackingSearchId(createdOrderNumber);
-                      setIsCheckoutOpen(false);
-                      setActiveTab('track');
-                    }}
-                    className="flex-1 px-4 py-2.5 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition shadow-xs"
-                  >
-                    Track Order Timeline ({createdOrderNumber})
-                  </button>
+                  {currentUser && (
+                    <button
+                      onClick={() => {
+                        setIsCheckoutOpen(false);
+                        setActiveTab('customer');
+                      }}
+                      className="flex-1 px-4 py-2.5 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition shadow-xs"
+                    >
+                      View My Orders ({createdOrderNumber})
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {

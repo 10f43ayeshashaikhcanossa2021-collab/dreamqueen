@@ -213,7 +213,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-pearl-rose-charm',
-    name: 'Pearl Blossom Crochet Rose (Set of 3)',
+    name: 'Pearl Blossom Crochet Rose',
     tagline: 'Artisan layered rose petals with lustrous pearl center & twin green leaves',
     price: 50,
     originalPrice: 99,

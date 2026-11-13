@@ -225,7 +225,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           parsed.length > 0 &&
           parsed.every((p) => p.id && p.images?.some(isValidCatalogImage))
         ) {
-          return parsed;
+          return parsed.map((p) =>
+            p.id === 'prod-pearl-rose-charm' && p.name.includes('(Set of 3)')
+              ? { ...p, name: 'Pearl Blossom Crochet Rose' }
+              : p
+          );
         }
       }
       return INITIAL_PRODUCTS.map((p) => ({ ...p, isActive: p.isActive ?? true }));
@@ -472,16 +476,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (liveProducts && liveProducts.length > 0) {
           const sanitized = liveProducts
             .filter((p) => p.images?.some(isValidCatalogImage))
-            .map((p) =>
-              p.id === 'prod-pearl-rose-charm' &&
-              p.images?.[0]?.startsWith('/assets/aistudio/') &&
-              !p.images[0].includes('Crochet_Flower_Charm_on_Cream_Handbag_02a1d697')
-                ? {
-                    ...p,
-                    images: ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png']
-                  }
-                : p
-            );
+            .map((p) => {
+              if (p.id !== 'prod-pearl-rose-charm') return p;
+              const nextName = p.name.includes('(Set of 3)')
+                ? 'Pearl Blossom Crochet Rose'
+                : p.name;
+              const nextImages =
+                p.images?.[0]?.startsWith('/assets/aistudio/') &&
+                !p.images[0].includes('Crochet_Flower_Charm_on_Cream_Handbag_02a1d697')
+                  ? ['/assets/aistudio/Crochet_Flower_Charm_on_Cream_Handbag_02a1d697.png']
+                  : p.images;
+              return nextName !== p.name || nextImages !== p.images
+                ? { ...p, name: nextName, images: nextImages }
+                : p;
+            });
           if (sanitized.length > 0) {
             setProducts(sanitized);
           }

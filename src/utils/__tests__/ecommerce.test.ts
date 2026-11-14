@@ -15,7 +15,12 @@ import {
   verifyRazorpayPaymentSignature,
   verifyRazorpayWebhookSignature
 } from '../paymentCrypto';
-import { buildWhatsAppOrderMessage } from '../whatsappHelper';
+import {
+  buildWhatsAppOrderMessage,
+  formatDisplayPhone,
+  formatWhatsAppNumber,
+  getWhatsAppOrderUrl
+} from '../whatsappHelper';
 import { createApp } from '../../../server';
 import type { Coupon } from '../../types';
 
@@ -226,7 +231,7 @@ describe('Razorpay HMAC Signature Verification', () => {
 });
 
 describe('WhatsApp Order Formatting', () => {
-  it('renders ₹20 delivery fee and ₹10 COD fee cleanly', () => {
+  it('renders ₹20 delivery fee, ₹10 COD fee, and UTR proof cleanly', () => {
     const msg = buildWhatsAppOrderMessage({
       orderNumber: 'DQ-123456',
       items: [{ name: 'Cherry Keychain', quantity: 1, price: 150, colorName: 'Cherry Red' }],
@@ -235,6 +240,8 @@ describe('WhatsApp Order Formatting', () => {
       codFee: 10,
       total: 180,
       paymentMethod: 'cod',
+      paymentStatus: 'pending',
+      upiTransactionRef: '412345678901',
       customerName: 'Aisha',
       phone: '8097706536'
     });
@@ -242,6 +249,24 @@ describe('WhatsApp Order Formatting', () => {
     expect(msg).toContain('₹20');
     expect(msg).toContain('₹10');
     expect(msg).toContain('₹180');
+    expect(msg).toContain('412345678901');
+  });
+
+  it('normalizes merchant WhatsApp number and builds wa.me URL', () => {
+    expect(formatWhatsAppNumber('8097706536')).toBe('918097706536');
+    expect(formatWhatsAppNumber('+91 80977-06536')).toBe('918097706536');
+    expect(formatDisplayPhone('+91 8097706536')).toBe('8097706536');
+
+    const url = getWhatsAppOrderUrl({
+      orderNumber: 'DQ-777888',
+      items: [{ name: 'Rose Charm', quantity: 1, price: 120 }],
+      subtotal: 120,
+      shippingFee: 20,
+      total: 140,
+      targetPhone: '8097706536'
+    });
+    expect(url.startsWith('https://wa.me/918097706536?text=')).toBe(true);
+    expect(decodeURIComponent(url)).toContain('DQ-777888');
   });
 });
 
@@ -262,6 +287,7 @@ describe('Express API Security & Validation Contracts', () => {
 
   afterAll(async () => {
     if (server) {
+      server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
@@ -323,4 +349,70 @@ describe('Express API Security & Validation Contracts', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('creates an order with authoritative server pricing, tracks it privately, and subscribes newsletter cleanly', async () => {
+    const createRes = await fetch(`${baseUrl}/api/orders/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: 'prod-heart-hair-clips', quantity: 2 }],
+        shippingAddress: {
+          fullName: 'Ayesha Test',
+          phone: '8097706536',
+          email: 'ayesha-test@example.com',
+          addressLine1: 'Room No 30, Mahim East',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          pincode: '400016'
+        },
+        paymentMethod: 'cod',
+        idempotencyKey: `test-idem-${Date.now()}`
+      })
+    });
+    expect(createRes.status).toBe(201);
+    const createdJson = await createRes.json();
+    expect(createdJson.order).toBeDefined();
+    expect(createdJson.merchantWhatsApp).toBe('918097706536');
+    expect(String(createdJson.whatsappOrderUrl || '')).toContain('https://wa.me/918097706536?text=');
+    // 2 * ₹20 = ₹40 + ₹20 shipping + ₹10 COD fee = ₹70
+    expect(createdJson.order.subtotal).toBe(40);
+    expect(createdJson.order.shippingFee).toBe(20);
+    expect(createdJson.order.codFee).toBe(10);
+    expect(createdJson.order.total).toBe(70);
+
+    // Track with wrong email -> 403
+    const wrongTrack = await fetch(`${baseUrl}/api/orders/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: createdJson.order.orderNumber,
+        contact: 'intruder@example.com'
+      })
+    });
+    expect(wrongTrack.status).toBe(403);
+
+    // Track with matching email -> 200
+    const rightTrack = await fetch(`${baseUrl}/api/orders/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: createdJson.order.orderNumber,
+        contact: 'ayesha-test@example.com'
+      })
+    });
+    expect(rightTrack.status).toBe(200);
+    const trackedJson = await rightTrack.json();
+    expect(trackedJson.order.orderNumber).toBe(createdJson.order.orderNumber);
+
+    // Newsletter subscription
+    const newsRes = await fetch(`${baseUrl}/api/newsletter/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `club-${Date.now()}@example.com` })
+    });
+    expect([200, 201]).toContain(newsRes.status);
+    const newsJson = await newsRes.json();
+    expect(newsJson.subscribed).toBe(true);
+  });
 });
+

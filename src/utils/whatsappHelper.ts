@@ -3,7 +3,26 @@ import { CartItem, ShippingAddress } from '../types';
 export const ARTISAN_WHATSAPP_NUMBER = '918097706536';
 export const DISPLAY_WHATSAPP_NUMBER = '8097706536';
 
-interface BuildOrderMessageParams {
+/**
+ * Normalizes an Indian/international phone number to digits suitable for https://wa.me/<digits>.
+ * 10-digit Indian mobile numbers get prefixed with '91'. Falls back to ARTISAN_WHATSAPP_NUMBER.
+ */
+export function formatWhatsAppNumber(phone?: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return ARTISAN_WHATSAPP_NUMBER;
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 11 && digits.startsWith('0')) return `91${digits.slice(1)}`;
+  if (digits.length >= 11) return digits;
+  return ARTISAN_WHATSAPP_NUMBER;
+}
+
+export function formatDisplayPhone(phone?: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length >= 10) return digits.slice(-10);
+  return DISPLAY_WHATSAPP_NUMBER;
+}
+
+export interface BuildOrderMessageParams {
   orderNumber?: string;
   items: Array<{
     name: string;
@@ -18,10 +37,15 @@ interface BuildOrderMessageParams {
   codFee?: number;
   total: number;
   paymentMethod?: string;
+  paymentStatus?: string;
+  upiTransactionRef?: string;
+  upiId?: string;
+  estimatedDeliveryDate?: string;
   customerName?: string;
   phone?: string;
   address?: Partial<ShippingAddress>;
   notes?: string;
+  targetPhone?: string;
 }
 
 /**
@@ -38,6 +62,10 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
     codFee = 0,
     total,
     paymentMethod = 'cod',
+    paymentStatus,
+    upiTransactionRef,
+    upiId = '8097706536@postbank',
+    estimatedDeliveryDate,
     customerName,
     phone,
     address,
@@ -45,16 +73,19 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
   } = params;
 
   const lines: string[] = [
-    '🌸 *NEW ORDER — DREAMQUEEN CROCHET* 🌸',
+    '🌸 *NEW ORDER — DREAMQUEEN ATELIER* 🌸',
     '━━━━━━━━━━━━━━━━━━━━'
   ];
 
   if (orderNumber) {
     lines.push(`📋 *Order ID:* ${orderNumber}`);
   }
+  if (estimatedDeliveryDate) {
+    lines.push(`🚚 *Est. Delivery:* ${estimatedDeliveryDate}`);
+  }
 
   lines.push('');
-  lines.push('🛍️ *Items in Cart:*');
+  lines.push('🛍️ *Ordered Items:*');
   items.forEach((item, idx) => {
     lines.push(`${idx + 1}. *${item.name}*`);
     if (item.colorName) {
@@ -73,7 +104,7 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
   }
 
   lines.push(
-    `• Delivery Charges: ${shippingFee === 0 ? 'FREE (Orders over ₹499)' : `₹${shippingFee} (Standard 7-Day)`}`
+    `• Delivery Charges: ${shippingFee === 0 ? 'FREE (Orders ₹499+)' : `₹${shippingFee} (Standard 7-Day)`}`
   );
 
   if (paymentMethod === 'cod' && codFee > 0) {
@@ -86,9 +117,23 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
     paymentMethod === 'cod'
       ? 'Cash on Delivery (Pay on arrival)'
       : paymentMethod === 'upi_qr'
-      ? 'UPI QR Scan (8097706536@postbank)'
-      : 'Online Payment';
-  lines.push(`• Payment Preference: ${paymentMethodLabel}`);
+      ? `UPI QR Scan (${upiId})`
+      : 'Razorpay Online Payment';
+  lines.push(`• Payment Method: ${paymentMethodLabel}`);
+
+  if (paymentStatus) {
+    const statusLabel =
+      paymentStatus === 'paid'
+        ? 'Verified & Paid'
+        : paymentMethod === 'upi_qr'
+        ? 'Pending Studio Verification'
+        : 'Pay on Delivery';
+    lines.push(`• Payment Status: ${statusLabel}`);
+  }
+
+  if (upiTransactionRef && upiTransactionRef.trim()) {
+    lines.push(`• *UPI / UTR Ref:* ${upiTransactionRef.trim()}`);
+  }
 
   if (customerName || (address && address.fullName)) {
     lines.push('');
@@ -116,7 +161,7 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
 
   lines.push('');
   lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push('Please confirm my order and share payment / dispatch details! Thank you 🧶💖');
+  lines.push('Please confirm my order and share dispatch updates! Thank you 🧶💖');
 
   return lines.join('\n');
 }
@@ -125,8 +170,9 @@ export function buildWhatsAppOrderMessage(params: BuildOrderMessageParams): stri
  * Returns the full wa.me direct link with prefilled order text.
  */
 export function getWhatsAppOrderUrl(params: BuildOrderMessageParams): string {
+  const target = formatWhatsAppNumber(params.targetPhone);
   const text = buildWhatsAppOrderMessage(params);
-  return `https://wa.me/${ARTISAN_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${target}?text=${encodeURIComponent(text)}`;
 }
 
 /**
@@ -137,7 +183,15 @@ export function getQuickCartWhatsAppUrl(
   subtotal: number,
   shippingFee: number,
   finalTotal: number,
-  customerName?: string
+  customerName?: string,
+  options?: {
+    discount?: number;
+    couponCode?: string;
+    codFee?: number;
+    paymentMethod?: string;
+    targetPhone?: string;
+    upiId?: string;
+  }
 ): string {
   const items = cart.map((c) => ({
     name: c.product.name,
@@ -149,10 +203,15 @@ export function getQuickCartWhatsAppUrl(
   return getWhatsAppOrderUrl({
     items,
     subtotal,
+    discount: options?.discount ?? 0,
+    couponCode: options?.couponCode,
     shippingFee,
+    codFee: options?.codFee ?? 0,
     total: finalTotal,
-    paymentMethod: 'cod',
+    paymentMethod: options?.paymentMethod || 'upi_qr',
+    upiId: options?.upiId,
+    targetPhone: options?.targetPhone,
     customerName,
-    notes: 'Inquiry & Direct Order from DreamQueen Website Cart'
+    notes: 'Direct Order Inquiry from DreamQueen Website Cart'
   });
 }

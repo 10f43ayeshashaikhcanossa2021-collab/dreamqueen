@@ -446,10 +446,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      hydrateUserFromSession(data.session?.user || null);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+        hydrateUserFromSession(data.session?.user || null);
+      })
+      .catch(() => {
+        if (mounted) hydrateUserFromSession(null);
+      });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
@@ -572,114 +577,135 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
-    refreshFromSupabase();
-
-    const unsubscribe = subscribeToRealtimeUpdates({
-      onProductChange: (event, payload) => {
-        if (event === 'DELETE' && payload.old?.id) {
-          const delId = String(payload.old.id);
-          setProducts((prev) => prev.filter((p) => p.id !== delId));
-        } else if (payload.new) {
-          const incoming = productFromSupabaseRow(payload.new);
-          setProducts((prev) => {
-            const idx = prev.findIndex((p) => p.id === incoming.id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = incoming;
-              return updated;
-            }
-            return [incoming, ...prev];
-          });
-        }
-      },
-      onOrderChange: (event, payload) => {
-        if (event === 'DELETE') {
-          const delId = String(payload.old?.id || '');
-          const delNum = String(payload.old?.order_number || '');
-          setOrders((prev) =>
-            prev.filter(
-              (o) => (delId ? o.id !== delId : true) && (delNum ? o.orderNumber !== delNum : true)
-            )
-          );
-        } else if (payload.new) {
-          const incoming = orderFromSupabaseRow(payload.new);
-          setOrders((prev) => {
-            const idx = prev.findIndex(
-              (o) => o.id === incoming.id || o.orderNumber === incoming.orderNumber
-            );
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = incoming;
-              return updated;
-            }
-            return [incoming, ...prev];
-          });
-        }
-      },
-      onCustomOrderChange: (event, payload) => {
-        if (event === 'DELETE' && payload.old?.id) {
-          const delId = String(payload.old.id);
-          setCustomOrders((prev) => prev.filter((c) => c.id !== delId));
-        } else if (payload.new) {
-          const incoming = customOrderFromSupabaseRow(payload.new);
-          setCustomOrders((prev) => {
-            const idx = prev.findIndex((c) => c.id === incoming.id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = incoming;
-              return updated;
-            }
-            return [incoming, ...prev];
-          });
-        }
-      },
-      onFeedbackChange: (event, payload) => {
-        if (event === 'DELETE' && payload.old?.id) {
-          const delId = String(payload.old.id);
-          setFeedbacks((prev) => prev.filter((f) => f.id !== delId));
-        } else if (payload.new) {
-          const incoming = feedbackFromSupabaseRow(payload.new);
-          setFeedbacks((prev) => {
-            const idx = prev.findIndex((f) => f.id === incoming.id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = incoming;
-              return updated;
-            }
-            return [incoming, ...prev];
-          });
-        }
-      },
-      onCouponChange: () => {
-        fetchCouponsFromSupabase()
-          .then((list) => {
-            if (list.length > 0) setCoupons(list);
-          })
-          .catch(() => {});
-      },
-      onSettingsChange: () => {
-        fetchStoreSettingsFromSupabase()
-          .then((s) => {
-            if (s) setStoreSettings((prev) => ({ ...prev, ...s }));
-          })
-          .catch(() => {});
-      }
-    });
-
-    const intervalId = setInterval(() => {
-      refreshFromSupabase();
-    }, 20000);
+    let active = true;
+    let unsubscribe = () => {};
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         refreshFromSupabase();
       }
     };
-    document.addEventListener('visibilitychange', handleVisibility);
+
+    const bootstrapSync = async () => {
+      try {
+        const healthResp = await fetch('/api/health');
+        const healthJson = await healthResp.json().catch(() => null);
+        if (healthJson && healthJson.integrations?.supabaseReachable === false) {
+          return;
+        }
+      } catch {
+        // Proceed if /api/health unavailable
+      }
+
+      if (!active) return;
+      refreshFromSupabase();
+
+      unsubscribe = subscribeToRealtimeUpdates({
+        onProductChange: (event, payload) => {
+          if (event === 'DELETE' && payload.old?.id) {
+            const delId = String(payload.old.id);
+            setProducts((prev) => prev.filter((p) => p.id !== delId));
+          } else if (payload.new) {
+            const incoming = productFromSupabaseRow(payload.new);
+            setProducts((prev) => {
+              const idx = prev.findIndex((p) => p.id === incoming.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = incoming;
+                return updated;
+              }
+              return [incoming, ...prev];
+            });
+          }
+        },
+        onOrderChange: (event, payload) => {
+          if (event === 'DELETE') {
+            const delId = String(payload.old?.id || '');
+            const delNum = String(payload.old?.order_number || '');
+            setOrders((prev) =>
+              prev.filter(
+                (o) => (delId ? o.id !== delId : true) && (delNum ? o.orderNumber !== delNum : true)
+              )
+            );
+          } else if (payload.new) {
+            const incoming = orderFromSupabaseRow(payload.new);
+            setOrders((prev) => {
+              const idx = prev.findIndex(
+                (o) => o.id === incoming.id || o.orderNumber === incoming.orderNumber
+              );
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = incoming;
+                return updated;
+              }
+              return [incoming, ...prev];
+            });
+          }
+        },
+        onCustomOrderChange: (event, payload) => {
+          if (event === 'DELETE' && payload.old?.id) {
+            const delId = String(payload.old.id);
+            setCustomOrders((prev) => prev.filter((c) => c.id !== delId));
+          } else if (payload.new) {
+            const incoming = customOrderFromSupabaseRow(payload.new);
+            setCustomOrders((prev) => {
+              const idx = prev.findIndex((c) => c.id === incoming.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = incoming;
+                return updated;
+              }
+              return [incoming, ...prev];
+            });
+          }
+        },
+        onFeedbackChange: (event, payload) => {
+          if (event === 'DELETE' && payload.old?.id) {
+            const delId = String(payload.old.id);
+            setFeedbacks((prev) => prev.filter((f) => f.id !== delId));
+          } else if (payload.new) {
+            const incoming = feedbackFromSupabaseRow(payload.new);
+            setFeedbacks((prev) => {
+              const idx = prev.findIndex((f) => f.id === incoming.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = incoming;
+                return updated;
+              }
+              return [incoming, ...prev];
+            });
+          }
+        },
+        onCouponChange: () => {
+          fetchCouponsFromSupabase()
+            .then((list) => {
+              if (list.length > 0) setCoupons(list);
+            })
+            .catch(() => {});
+        },
+        onSettingsChange: () => {
+          fetchStoreSettingsFromSupabase()
+            .then((s) => {
+              if (s) setStoreSettings((prev) => ({ ...prev, ...s }));
+            })
+            .catch(() => {});
+        }
+      });
+
+      intervalId = setInterval(() => {
+        refreshFromSupabase();
+      }, 20000);
+
+      document.addEventListener('visibilitychange', handleVisibility);
+    };
+
+    bootstrapSync();
 
     return () => {
+      active = false;
       unsubscribe();
-      clearInterval(intervalId);
+      if (intervalId) clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshFromSupabase]);

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { safeImage } from '../utils/imageHelper';
-import { getQuickCartWhatsAppUrl } from '../utils/whatsappHelper';
+import { formatDisplayPhone, getQuickCartWhatsAppUrl } from '../utils/whatsappHelper';
 import { calculateOrderTotals } from '../utils/pricing';
 
 export const CartDrawer: React.FC = () => {
@@ -70,12 +70,21 @@ export const CartDrawer: React.FC = () => {
     setIsCheckoutOpen(true);
   };
 
+  const studioDisplayPhone = formatDisplayPhone(storeSettings.supportPhone);
+
   const quickWhatsAppUrl = getQuickCartWhatsAppUrl(
     cart,
     pricing.subtotal,
     pricing.shippingFee,
     pricing.total,
-    currentUser?.name
+    currentUser?.name,
+    {
+      discount: pricing.discount,
+      couponCode: activeCoupon?.code,
+      paymentMethod: 'upi_qr',
+      targetPhone: storeSettings.supportPhone,
+      upiId: storeSettings.upiId
+    }
   );
 
   return (
@@ -377,7 +386,7 @@ export const CartDrawer: React.FC = () => {
                     className="w-full py-2.5 px-4 rounded-full bg-[#E8F5E9] hover:bg-[#D6EED8] text-[#1E7E34] border border-[#C8E6C9] text-xs font-semibold transition flex items-center justify-center gap-1.5"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>Quick Inquiry on WhatsApp (8097706536)</span>
+                    <span>Order on WhatsApp (+91 {studioDisplayPhone})</span>
                   </a>
 
                   <button

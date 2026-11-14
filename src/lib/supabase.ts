@@ -31,6 +31,24 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
+export function formatSupabaseError(err: unknown, fallback: string = 'Request failed.'): string {
+  const msg =
+    typeof err === 'string'
+      ? err
+      : String((err as any)?.message || (err as any)?.error_description || '');
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('fetch failed') ||
+    lower.includes('load failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('enotfound')
+  ) {
+    return 'Cannot reach the configured Supabase server (host offline or DNS unreachable). Update VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY in .env with an active project, or continue with Guest Checkout & WhatsApp ordering.';
+  }
+  return msg || fallback;
+}
+
 // =========================================================
 // IMAGE VALIDATION & SUPABASE STORAGE HELPERS
 // =========================================================
@@ -66,20 +84,24 @@ export async function uploadImageToBucket(
     .slice(0, 40);
   const path = `${folderPrefix}/${Date.now()}-${safeSlug}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type
-    });
+  try {
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type
+      });
 
-  if (uploadError) {
-    return { error: uploadError.message };
+    if (uploadError) {
+      return { error: formatSupabaseError(uploadError, 'Upload failed.') };
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return { publicUrl: data.publicUrl };
+  } catch (err) {
+    return { error: formatSupabaseError(err, 'Image upload failed.') };
   }
-
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  return { publicUrl: data.publicUrl };
 }
 
 export async function deleteStorageImageByUrl(
@@ -230,7 +252,7 @@ export function orderFromSupabaseRow(row: any): Order {
     }
   }
 
-  let shippingAddress = row.shipping_address;
+  let shippingAddress = row.shipping_address ?? row.shippingAddress;
   if (typeof shippingAddress === 'string') {
     try {
       shippingAddress = JSON.parse(shippingAddress);
@@ -256,7 +278,7 @@ export function orderFromSupabaseRow(row: any): Order {
     }
   }
 
-  let statusHistory = row.status_history;
+  let statusHistory = row.status_history ?? row.statusHistory;
   if (typeof statusHistory === 'string') {
     try {
       statusHistory = JSON.parse(statusHistory);
@@ -300,33 +322,34 @@ export function orderFromSupabaseRow(row: any): Order {
 
   return {
     id: String(row.id),
-    orderNumber: row.order_number || '',
-    userId: row.user_id || undefined,
+    orderNumber: row.order_number || row.orderNumber || '',
+    userId: row.user_id || row.userId || undefined,
     customer: normalizedCustomer,
     shippingAddress: normalizedAddress,
     items: normalizedItems,
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
-    couponCode: row.coupon_code || undefined,
-    shippingFee: Number(row.shipping_fee || 0),
-    codFee: Number(row.cod_fee || 0),
+    couponCode: row.coupon_code || row.couponCode || undefined,
+    shippingFee: Number(row.shipping_fee ?? row.shippingFee ?? 0),
+    codFee: Number(row.cod_fee ?? row.codFee ?? 0),
     total: Number(row.total || 0),
-    paymentMethod: row.payment_method || 'cod',
-    paymentStatus: row.payment_status || 'pending',
-    razorpayPaymentId: row.razorpay_payment_id || undefined,
-    razorpayOrderId: row.razorpay_order_id || undefined,
-    upiTransactionRef: row.upi_transaction_ref || undefined,
-    paymentVerifiedAt: row.payment_verified_at || undefined,
-    trackingStatus: row.tracking_status || 'pending',
-    shiprocketTrackingNumber: row.shiprocket_tracking_number || undefined,
-    estimatedDeliveryDate: row.estimated_delivery_date || '',
+    paymentMethod: row.payment_method || row.paymentMethod || 'cod',
+    paymentStatus: row.payment_status || row.paymentStatus || 'pending',
+    razorpayPaymentId: row.razorpay_payment_id || row.razorpayPaymentId || undefined,
+    razorpayOrderId: row.razorpay_order_id || row.razorpayOrderId || undefined,
+    upiTransactionRef: row.upi_transaction_ref || row.upiTransactionRef || undefined,
+    paymentVerifiedAt: row.payment_verified_at || row.paymentVerifiedAt || undefined,
+    trackingStatus: row.tracking_status || row.trackingStatus || 'pending',
+    shiprocketTrackingNumber:
+      row.shiprocket_tracking_number || row.shiprocketTrackingNumber || undefined,
+    estimatedDeliveryDate: row.estimated_delivery_date || row.estimatedDeliveryDate || '',
     notes: row.notes || undefined,
-    cancellationReason: row.cancellation_reason || undefined,
-    refundStatus: row.refund_status || undefined,
-    refundId: row.refund_id || undefined,
+    cancellationReason: row.cancellation_reason || row.cancellationReason || undefined,
+    refundStatus: row.refund_status || row.refundStatus || undefined,
+    refundId: row.refund_id || row.refundId || undefined,
     statusHistory: Array.isArray(statusHistory) ? statusHistory : undefined,
-    createdAt: row.created_at || new Date().toISOString(),
-    updatedAt: row.updated_at || undefined
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || row.updatedAt || undefined
   };
 }
 
@@ -876,7 +899,7 @@ export async function signUpWithSupabase(data: {
     });
 
     if (error) {
-      return { error: error.message };
+      return { error: formatSupabaseError(error, 'Registration failed. Please try again.') };
     }
 
     // Supabase returns empty identities array if the email already exists (when email enum protection is enabled)
@@ -893,7 +916,7 @@ export async function signUpWithSupabase(data: {
       requiresEmailVerification
     };
   } catch (err: any) {
-    return { error: err?.message || 'Registration failed. Please try again.' };
+    return { error: formatSupabaseError(err, 'Registration failed. Please try again.') };
   }
 }
 
@@ -907,11 +930,11 @@ export async function signInWithSupabase(
       password
     });
     if (error) {
-      return { error: error.message };
+      return { error: formatSupabaseError(error, 'Sign in failed. Please check your credentials.') };
     }
     return { user: authData.user, session: authData.session };
   } catch (err: any) {
-    return { error: err?.message || 'Sign in failed. Please check your credentials.' };
+    return { error: formatSupabaseError(err, 'Sign in failed. Please check your credentials.') };
   }
 }
 
@@ -922,10 +945,10 @@ export async function sendPasswordResetEmail(
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
       redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
     });
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: formatSupabaseError(error, 'Failed to send reset link.') };
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to send password reset email.' };
+    return { success: false, error: formatSupabaseError(err, 'Failed to send password reset email.') };
   }
 }
 
@@ -934,10 +957,10 @@ export async function updateUserPassword(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: formatSupabaseError(error, 'Failed to update password.') };
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to update password.' };
+    return { success: false, error: formatSupabaseError(err, 'Failed to update password.') };
   }
 }
 
@@ -949,15 +972,21 @@ export async function resendVerificationEmail(
       type: 'signup',
       email: email.trim().toLowerCase()
     });
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      return { success: false, error: formatSupabaseError(error, 'Could not resend verification email.') };
+    }
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Could not resend verification email.' };
+    return { success: false, error: formatSupabaseError(err, 'Could not resend verification email.') };
   }
 }
 
 export async function signOutSupabase(): Promise<void> {
-  await supabase.auth.signOut();
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // ignore offline signOut network error
+  }
 }
 
 export async function getAccessToken(): Promise<string | null> {

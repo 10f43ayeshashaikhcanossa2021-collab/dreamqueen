@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import type { Order, PaymentMethod, ShippingAddress } from '../types';
 import {
@@ -13,13 +13,18 @@ import {
   MessageCircle,
   Download,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Copy
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { UpiQrCard } from './UpiQrCard';
 import { safeImage } from '../utils/imageHelper';
-import { getWhatsAppOrderUrl } from '../utils/whatsappHelper';
+import {
+  buildWhatsAppOrderMessage,
+  formatDisplayPhone,
+  getWhatsAppOrderUrl
+} from '../utils/whatsappHelper';
 import {
   calculateOrderTotals,
   isValidEmail,
@@ -76,6 +81,10 @@ export const CheckoutModal: React.FC = () => {
   const [step, setStep] = useState<1 | 2 | 3 | 'success'>(1);
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [createdWhatsAppUrl, setCreatedWhatsAppUrl] = useState<string>('');
+  const [sendOrderToWhatsApp, setSendOrderToWhatsApp] = useState<boolean>(true);
+  const [whatsappAutoLaunched, setWhatsappAutoLaunched] = useState<boolean>(false);
+  const [copiedWhatsAppMsg, setCopiedWhatsAppMsg] = useState<boolean>(false);
+  const whatsappDispatchAnchorRef = useRef<HTMLAnchorElement | null>(null);
   const [orderNotes, setOrderNotes] = useState<string>('');
   const [saveAddressToProfile, setSaveAddressToProfile] = useState<boolean>(true);
   const [validationError, setValidationError] = useState<string>('');
@@ -109,6 +118,9 @@ export const CheckoutModal: React.FC = () => {
     if (!isCheckoutOpen) return;
     setStep(1);
     setCreatedOrder(null);
+    setCreatedWhatsAppUrl('');
+    setWhatsappAutoLaunched(false);
+    setCopiedWhatsAppMsg(false);
     setUtrInput('');
     setUtrSubmitted(false);
     setValidationError('');
@@ -138,6 +150,34 @@ export const CheckoutModal: React.FC = () => {
   }, [isCheckoutOpen, currentUser]);
 
   if (!isCheckoutOpen) return null;
+
+  const studioDisplayPhone = formatDisplayPhone(storeSettings.supportPhone);
+
+  const buildOrderWhatsAppParams = (order: Order) => ({
+    orderNumber: order.orderNumber,
+    items: order.items.map((it) => ({
+      name: it.productName,
+      quantity: it.quantity,
+      price: it.price,
+      colorName: it.color?.name
+    })),
+    subtotal: order.subtotal,
+    discount: order.discount,
+    couponCode: order.couponCode,
+    shippingFee: order.shippingFee,
+    codFee: order.codFee,
+    total: order.total,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    upiTransactionRef: order.upiTransactionRef,
+    upiId: storeSettings.upiId,
+    estimatedDeliveryDate: order.estimatedDeliveryDate,
+    customerName: order.customer.name,
+    phone: order.customer.phone,
+    address: order.shippingAddress,
+    notes: order.notes,
+    targetPhone: storeSettings.supportPhone
+  });
 
   const pricing = calculateOrderTotals({
     items: cart.map((c) => ({ price: c.product.price, quantity: c.quantity })),
@@ -305,36 +345,31 @@ export const CheckoutModal: React.FC = () => {
 
     setIsProcessingOrder(false);
 
-    const waUrl = getWhatsAppOrderUrl({
-      orderNumber: finalOrder.orderNumber,
-      items: finalOrder.items.map((it) => ({
-        name: it.productName,
-        quantity: it.quantity,
-        price: it.price,
-        colorName: it.color?.name
-      })),
-      subtotal: finalOrder.subtotal,
-      discount: finalOrder.discount,
-      couponCode: finalOrder.couponCode,
-      shippingFee: finalOrder.shippingFee,
-      codFee: finalOrder.codFee,
-      total: finalOrder.total,
-      paymentMethod: finalOrder.paymentMethod,
-      customerName: finalOrder.customer.name,
-      phone: finalOrder.customer.phone,
-      address: finalOrder.shippingAddress,
-      notes: finalOrder.notes
-    });
+    const waUrl = getWhatsAppOrderUrl(buildOrderWhatsAppParams(finalOrder));
 
     setCreatedOrder(finalOrder);
     setCreatedWhatsAppUrl(waUrl);
     setStep('success');
 
+    if (sendOrderToWhatsApp && whatsappDispatchAnchorRef.current) {
+      try {
+        whatsappDispatchAnchorRef.current.href = waUrl;
+        whatsappDispatchAnchorRef.current.click();
+        setWhatsappAutoLaunched(true);
+      } catch {
+        setWhatsappAutoLaunched(false);
+      }
+    }
+
     try {
       confetti({ particleCount: 80, spread: 65, origin: { y: 0.6 } });
     } catch {}
 
-    showToast(`Order ${finalOrder.orderNumber} created!`);
+    showToast(
+      sendOrderToWhatsApp
+        ? `Order ${finalOrder.orderNumber} placed & ready on WhatsApp (+91 ${studioDisplayPhone})!`
+        : `Order ${finalOrder.orderNumber} created!`
+    );
   };
 
   const handleUtrSubmit = async (e: React.FormEvent) => {
@@ -351,11 +386,28 @@ export const CheckoutModal: React.FC = () => {
       showToast(res.error || 'Could not record UTR reference.', 'error');
       return;
     }
-    setCreatedOrder((prev) =>
-      prev ? { ...prev, upiTransactionRef: utrInput.trim(), paymentStatus: 'pending' } : prev
-    );
+    const updatedOrder: Order = {
+      ...createdOrder,
+      upiTransactionRef: utrInput.trim(),
+      paymentStatus: 'pending'
+    };
+    setCreatedOrder(updatedOrder);
+    setCreatedWhatsAppUrl(getWhatsAppOrderUrl(buildOrderWhatsAppParams(updatedOrder)));
     setUtrSubmitted(true);
-    showToast('UTR recorded! Payment remains Pending until studio verification.');
+    showToast('UTR recorded! You can now send your order + UTR ref on WhatsApp.');
+  };
+
+  const handleCopyWhatsAppOrder = async () => {
+    if (!createdOrder) return;
+    const text = buildWhatsAppOrderMessage(buildOrderWhatsAppParams(createdOrder));
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedWhatsAppMsg(true);
+      showToast('Order summary copied! Paste it into WhatsApp if needed.');
+      setTimeout(() => setCopiedWhatsAppMsg(false), 3000);
+    } catch {
+      showToast('Please tap the green WhatsApp button to send your order.', 'info');
+    }
   };
 
   return (
@@ -854,6 +906,23 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
+              <label className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-[#E8F5E9]/70 border border-[#C8E6C9] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendOrderToWhatsApp}
+                  onChange={(e) => setSendOrderToWhatsApp(e.target.checked)}
+                  className="mt-0.5 rounded accent-[#25D366]"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-[#1E7E34] block">
+                    Also send order summary on WhatsApp (+91 {studioDisplayPhone})
+                  </span>
+                  <span className="text-[11px] text-[#3B5E3F]">
+                    Opens WhatsApp with your items, total, delivery address &amp; payment details ready to send to DreamQueen Studio.
+                  </span>
+                </div>
+              </label>
+
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <button
                   type="button"
@@ -954,6 +1023,12 @@ export const CheckoutModal: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-2.5 max-w-md mx-auto">
+                {whatsappAutoLaunched && (
+                  <p className="text-[11px] text-[#1E7E34] bg-[#E8F5E9] border border-[#C8E6C9] rounded-xl px-3 py-2">
+                    WhatsApp opened in a new tab with your pre-filled order message. If your browser blocked the popup, tap the green button below.
+                  </p>
+                )}
+
                 <a
                   href={createdWhatsAppUrl}
                   target="_blank"
@@ -961,17 +1036,30 @@ export const CheckoutModal: React.FC = () => {
                   className="w-full py-3.5 px-6 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs sm:text-sm font-bold shadow-md transition flex items-center justify-center gap-2"
                 >
                   <MessageCircle className="w-4 h-4 fill-white" />
-                  <span>Share Order Receipt on WhatsApp (8097706536)</span>
+                  <span>
+                    {utrSubmitted
+                      ? `Send Order & UTR on WhatsApp (+91 ${studioDisplayPhone})`
+                      : `Send Order on WhatsApp (+91 ${studioDisplayPhone})`}
+                  </span>
                 </a>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyWhatsAppOrder}
+                    className="py-2.5 px-3 rounded-full bg-white border border-[#EAD5C5] text-[#5B3A29] text-xs font-semibold hover:bg-[#FFF8F0] transition flex items-center justify-center gap-1"
+                  >
+                    {copiedWhatsAppMsg ? <Check className="w-3.5 h-3.5 text-[#4A5D1E]" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedWhatsAppMsg ? 'Copied!' : 'Copy Order'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => downloadOrderInvoicePdf(createdOrder)}
-                    className="py-2.5 px-4 rounded-full bg-white border border-[#EAD5C5] text-[#5B3A29] text-xs font-semibold hover:bg-[#FFF8F0] transition flex items-center justify-center gap-1.5"
+                    className="py-2.5 px-3 rounded-full bg-white border border-[#EAD5C5] text-[#5B3A29] text-xs font-semibold hover:bg-[#FFF8F0] transition flex items-center justify-center gap-1"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>PDF Invoice</span>
+                    <span>Invoice</span>
                   </button>
 
                   <button
@@ -980,9 +1068,9 @@ export const CheckoutModal: React.FC = () => {
                       setIsCheckoutOpen(false);
                       setActiveTab('track');
                     }}
-                    className="py-2.5 px-4 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition"
+                    className="py-2.5 px-3 rounded-full bg-[#5B3A29] text-white text-xs font-semibold hover:bg-[#43291B] transition"
                   >
-                    Track This Order
+                    Track Order
                   </button>
                 </div>
 
@@ -1001,6 +1089,16 @@ export const CheckoutModal: React.FC = () => {
           )}
         </div>
       </motion.div>
+
+      {/* Hidden anchor used to launch WhatsApp cleanly without window.open */}
+      <a
+        ref={whatsappDispatchAnchorRef}
+        href={createdWhatsAppUrl || `https://wa.me/91${studioDisplayPhone}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hidden"
+        aria-hidden="true"
+      />
     </div>
   );
 };

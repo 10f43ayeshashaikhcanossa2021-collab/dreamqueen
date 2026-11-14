@@ -17,9 +17,21 @@ import {
 import { INITIAL_COUPONS, INITIAL_PRODUCTS } from './src/data/initialProducts.ts';
 import { resolveItemImage } from './src/utils/imageHelper.ts';
 import {
+  formatWhatsAppNumber,
+  getWhatsAppOrderUrl
+} from './src/utils/whatsappHelper.ts';
+import {
   verifyRazorpayPaymentSignature,
   verifyRazorpayWebhookSignature
 } from './src/utils/paymentCrypto.ts';
+import {
+  isSupabaseNetworkError,
+  saveFallbackOrder,
+  getFallbackProductDeduction,
+  findFallbackOrderByNumber,
+  updateFallbackOrderById,
+  saveFallbackNewsletterEmail
+} from './src/utils/localFallbackDb.ts';
 
 dotenv.config();
 
@@ -44,6 +56,15 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const EMAIL_FROM = process.env.EMAIL_FROM || 'DreamQueen Atelier <onboarding@resend.dev>';
 const SHIPROCKET_EMAIL = process.env.SHIPROCKET_EMAIL || '';
 const SHIPROCKET_PASSWORD = process.env.SHIPROCKET_PASSWORD || '';
+const WHATSAPP_CLOUD_TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+const MERCHANT_WHATSAPP_NUMBER = formatWhatsAppNumber(
+  process.env.MERCHANT_WHATSAPP_NUMBER || DEFAULT_STORE_SETTINGS.supportPhone
+);
+
+function isWhatsAppCloudConfigured(): boolean {
+  return Boolean(WHATSAPP_CLOUD_TOKEN && WHATSAPP_PHONE_NUMBER_ID);
+}
 
 function isRazorpayConfigured(): boolean {
   return Boolean(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
@@ -139,6 +160,44 @@ async function sendTransactionalEmail(params: {
   }
 }
 
+async function sendMerchantWhatsAppNotification(params: {
+  recipientPhone: string;
+  messageText: string;
+}): Promise<{ sent: boolean; mode: 'cloud_api' | 'wa_link_only'; reason?: string }> {
+  if (!isWhatsAppCloudConfigured()) {
+    return {
+      sent: false,
+      mode: 'wa_link_only',
+      reason: 'WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID not configured.'
+    };
+  }
+  try {
+    const resp = await fetch(
+      `https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_CLOUD_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: formatWhatsAppNumber(params.recipientPhone),
+          type: 'text',
+          text: { body: params.messageText }
+        })
+      }
+    );
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return { sent: false, mode: 'wa_link_only', reason: errText };
+    }
+    return { sent: true, mode: 'cloud_api' };
+  } catch (err: any) {
+    return { sent: false, mode: 'wa_link_only', reason: err?.message };
+  }
+}
+
 // Simple in-memory idempotency cache to prevent accidental double clicks
 const recentIdempotencyOrders = new Map<string, { order: Order; expiresAt: number }>();
 
@@ -148,6 +207,31 @@ function pruneIdempotencyCache() {
     if (v.expiresAt < now) {
       recentIdempotencyOrders.delete(k);
     }
+  }
+}
+
+let cachedSupabaseHealth: { reachable: boolean; checkedAt: number } | null = null;
+
+async function checkSupabaseReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (cachedSupabaseHealth && now - cachedSupabaseHealth.checkedAt < 60_000) {
+    return cachedSupabaseHealth.reachable;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+      method: 'HEAD',
+      headers: { apikey: SUPABASE_ANON_KEY },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const reachable = resp.status > 0;
+    cachedSupabaseHealth = { reachable, checkedAt: now };
+    return reachable;
+  } catch {
+    cachedSupabaseHealth = { reachable: false, checkedAt: now };
+    return false;
   }
 }
 
@@ -165,16 +249,20 @@ export function createApp() {
   );
 
   // Health & Gateway Capability Discovery (no secrets returned!)
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', async (_req, res) => {
+    const supabaseReachable = await checkSupabaseReachable();
     res.json({
       ok: true,
       service: 'dreamqueen-atelier-api',
+      storageMode: supabaseReachable ? 'supabase' : 'local_fallback',
       integrations: {
+        supabaseReachable,
         supabaseServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
         razorpayConfigured: isRazorpayConfigured(),
         razorpayWebhookConfigured: Boolean(RAZORPAY_WEBHOOK_SECRET),
         emailConfigured: Boolean(RESEND_API_KEY),
-        shiprocketConfigured: Boolean(SHIPROCKET_EMAIL && SHIPROCKET_PASSWORD)
+        shiprocketConfigured: Boolean(SHIPROCKET_EMAIL && SHIPROCKET_PASSWORD),
+        whatsappCloudConfigured: isWhatsAppCloudConfigured()
       }
     });
   });
@@ -246,33 +334,37 @@ export function createApp() {
       }
 
       const token = extractBearerToken(req);
-      const authUser = await getAuthenticatedUser(token);
+      const supabaseOnline = await checkSupabaseReachable();
+      const authUser = supabaseOnline ? await getAuthenticatedUser(token) : null;
       const db = getSupabaseServerClient(token);
 
       // 1. Load authoritative store settings
       let settings: StoreSettings = { ...DEFAULT_STORE_SETTINGS };
-      try {
-        const { data: settingsRow } = await db
-          .from('store_settings')
-          .select('*')
-          .eq('id', 1)
-          .maybeSingle();
-        if (settingsRow) {
-          settings = {
-            ...DEFAULT_STORE_SETTINGS,
-            codEnabled: Boolean(settingsRow.cod_enabled),
-            codFee: Number(settingsRow.cod_fee ?? DEFAULT_STORE_SETTINGS.codFee),
-            freeShippingThreshold: Number(
-              settingsRow.free_shipping_threshold ?? DEFAULT_STORE_SETTINGS.freeShippingThreshold
-            ),
-            standardShippingFee: Number(
-              settingsRow.standard_shipping_fee ?? DEFAULT_STORE_SETTINGS.standardShippingFee
-            ),
-            upiId: settingsRow.upi_id || DEFAULT_STORE_SETTINGS.upiId,
-            upiPayeeName: settingsRow.upi_payee_name || DEFAULT_STORE_SETTINGS.upiPayeeName
-          };
-        }
-      } catch {}
+      if (supabaseOnline) {
+        try {
+          const { data: settingsRow } = await db
+            .from('store_settings')
+            .select('*')
+            .eq('id', 1)
+            .maybeSingle();
+          if (settingsRow) {
+            settings = {
+              ...DEFAULT_STORE_SETTINGS,
+              codEnabled: Boolean(settingsRow.cod_enabled),
+              codFee: Number(settingsRow.cod_fee ?? DEFAULT_STORE_SETTINGS.codFee),
+              freeShippingThreshold: Number(
+                settingsRow.free_shipping_threshold ?? DEFAULT_STORE_SETTINGS.freeShippingThreshold
+              ),
+              standardShippingFee: Number(
+                settingsRow.standard_shipping_fee ?? DEFAULT_STORE_SETTINGS.standardShippingFee
+              ),
+              upiId: settingsRow.upi_id || DEFAULT_STORE_SETTINGS.upiId,
+              upiPayeeName: settingsRow.upi_payee_name || DEFAULT_STORE_SETTINGS.upiPayeeName,
+              supportPhone: settingsRow.support_phone || DEFAULT_STORE_SETTINGS.supportPhone
+            };
+          }
+        } catch {}
+      }
 
       if (chosenMethod === 'cod' && !settings.codEnabled) {
         return res.status(400).json({ error: 'Cash on Delivery is currently disabled.' });
@@ -280,10 +372,14 @@ export function createApp() {
 
       // 2. Load authoritative catalog products from Supabase (fallback to INITIAL_PRODUCTS only if DB empty)
       const productIds = Array.from(new Set(items.map((it: any) => String(it.productId))));
-      const { data: dbProducts } = await db
-        .from('products')
-        .select('id, name, price, stock, images, is_active')
-        .in('id', productIds);
+      const dbProducts = supabaseOnline
+        ? (
+            await db
+              .from('products')
+              .select('id, name, price, stock, images, is_active')
+              .in('id', productIds)
+          ).data
+        : [];
 
       const productMap = new Map<
         string,
@@ -304,11 +400,12 @@ export function createApp() {
 
       for (const initP of INITIAL_PRODUCTS) {
         if (!productMap.has(initP.id)) {
+          const deducted = getFallbackProductDeduction(initP.id);
           productMap.set(initP.id, {
             id: initP.id,
             name: initP.name,
             price: initP.price,
-            stock: initP.stock,
+            stock: Math.max(0, initP.stock - deducted),
             images: initP.images,
             isActive: true,
             fromDb: false
@@ -355,11 +452,9 @@ export function createApp() {
       let matchedCoupon: Coupon | null = null;
       const cleanCouponCode = String(couponCode || '').trim().toUpperCase();
       if (cleanCouponCode) {
-        const { data: couponRow } = await db
-          .from('coupons')
-          .select('*')
-          .eq('code', cleanCouponCode)
-          .maybeSingle();
+        const couponRow = supabaseOnline
+          ? (await db.from('coupons').select('*').eq('code', cleanCouponCode).maybeSingle()).data
+          : null;
         if (couponRow) {
           matchedCoupon = {
             code: couponRow.code,
@@ -442,87 +537,98 @@ export function createApp() {
         ]
       };
 
-      // 5. Persist order, order_items, payment record & decrement stock in Supabase
-      const { error: insertOrderErr } = await db.from('orders').insert({
-        id: newOrder.id,
-        order_number: newOrder.orderNumber,
-        user_id: authUser?.id || null,
-        customer: newOrder.customer,
-        shipping_address: newOrder.shippingAddress,
-        items: newOrder.items,
-        subtotal: newOrder.subtotal,
-        discount: newOrder.discount,
-        coupon_code: newOrder.couponCode || null,
-        shipping_fee: newOrder.shippingFee,
-        cod_fee: newOrder.codFee,
-        total: newOrder.total,
-        payment_method: newOrder.paymentMethod,
-        payment_status: newOrder.paymentStatus,
-        tracking_status: newOrder.trackingStatus,
-        estimated_delivery_date: newOrder.estimatedDeliveryDate,
-        notes: newOrder.notes || null,
-        status_history: newOrder.statusHistory,
-        created_at: newOrder.createdAt
-      });
-
-      if (insertOrderErr) {
-        return res.status(400).json({
-          error: `Could not persist order: ${insertOrderErr.message}`
-        });
-      }
-
-      // Insert normalized order_items (non-fatal if table not yet migrated)
-      await db
-        .from('order_items')
-        .insert(
-          verifiedItems.map((it, idx) => ({
-            id: `${newOrder.id}-item-${idx + 1}`,
-            order_id: newOrder.id,
-            product_id: it.productId,
-            product_name: it.productName,
-            image: it.image,
-            unit_price: it.price,
-            quantity: it.quantity,
-            selected_color: it.color,
-            line_total: it.price * it.quantity
-          }))
-        )
-        .then(() => undefined, () => undefined);
-
-      // Insert initial payments ledger row (uses service_role when configured)
-      await db
-        .from('payments')
-        .insert({
-          id: `pay-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-          order_id: newOrder.id,
+      // 5. Persist order, order_items, payment record & decrement stock in Supabase (or fallback store if offline)
+      let usedFallbackStorage = false;
+      if (!supabaseOnline) {
+        saveFallbackOrder(newOrder);
+        usedFallbackStorage = true;
+      } else {
+        const { error: insertOrderErr } = await db.from('orders').insert({
+          id: newOrder.id,
           order_number: newOrder.orderNumber,
           user_id: authUser?.id || null,
-          gateway: newOrder.paymentMethod,
-          amount: newOrder.total,
-          currency: 'INR',
-          status: 'pending'
-        })
-        .then(() => undefined, () => undefined);
+          customer: newOrder.customer,
+          shipping_address: newOrder.shippingAddress,
+          items: newOrder.items,
+          subtotal: newOrder.subtotal,
+          discount: newOrder.discount,
+          coupon_code: newOrder.couponCode || null,
+          shipping_fee: newOrder.shippingFee,
+          cod_fee: newOrder.codFee,
+          total: newOrder.total,
+          payment_method: newOrder.paymentMethod,
+          payment_status: newOrder.paymentStatus,
+          tracking_status: newOrder.trackingStatus,
+          estimated_delivery_date: newOrder.estimatedDeliveryDate,
+          notes: newOrder.notes || null,
+          status_history: newOrder.statusHistory,
+          created_at: newOrder.createdAt
+        });
 
-      // Deduct stock if service_role is available (otherwise admin/trigger handles)
-      if (SUPABASE_SERVICE_ROLE_KEY) {
-        for (const it of verifiedItems) {
-          const prod = productMap.get(it.productId);
-          if (prod?.fromDb) {
-            await db
-              .from('products')
-              .update({
-                stock: Math.max(0, prod.stock - it.quantity),
-                updated_at: nowIso
-              })
-              .eq('id', it.productId);
+        if (insertOrderErr) {
+          if (isSupabaseNetworkError(insertOrderErr)) {
+            saveFallbackOrder(newOrder);
+            usedFallbackStorage = true;
+          } else {
+            return res.status(400).json({
+              error: `Could not persist order: ${insertOrderErr.message}`
+            });
           }
-        }
-        if (matchedCoupon) {
+        } else {
+          // Insert normalized order_items (non-fatal if table not yet migrated)
           await db
-            .from('coupons')
-            .update({ used_count: (matchedCoupon.usedCount || 0) + 1, updated_at: nowIso })
-            .eq('code', matchedCoupon.code);
+            .from('order_items')
+            .insert(
+              verifiedItems.map((it, idx) => ({
+                id: `${newOrder.id}-item-${idx + 1}`,
+                order_id: newOrder.id,
+                product_id: it.productId,
+                product_name: it.productName,
+                image: it.image,
+                unit_price: it.price,
+                quantity: it.quantity,
+                selected_color: it.color,
+                line_total: it.price * it.quantity
+              }))
+            )
+            .then(() => undefined, () => undefined);
+
+          // Insert initial payments ledger row (uses service_role when configured)
+          await db
+            .from('payments')
+            .insert({
+              id: `pay-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+              order_id: newOrder.id,
+              order_number: newOrder.orderNumber,
+              user_id: authUser?.id || null,
+              gateway: newOrder.paymentMethod,
+              amount: newOrder.total,
+              currency: 'INR',
+              status: 'pending'
+            })
+            .then(() => undefined, () => undefined);
+
+          // Deduct stock if service_role is available (otherwise admin/trigger handles)
+          if (SUPABASE_SERVICE_ROLE_KEY) {
+            for (const it of verifiedItems) {
+              const prod = productMap.get(it.productId);
+              if (prod?.fromDb) {
+                await db
+                  .from('products')
+                  .update({
+                    stock: Math.max(0, prod.stock - it.quantity),
+                    updated_at: nowIso
+                  })
+                  .eq('id', it.productId);
+              }
+            }
+            if (matchedCoupon) {
+              await db
+                .from('coupons')
+                .update({ used_count: (matchedCoupon.usedCount || 0) + 1, updated_at: nowIso })
+                .eq('code', matchedCoupon.code);
+            }
+          }
         }
       }
 
@@ -544,7 +650,46 @@ export function createApp() {
           <p>Questions? Reply on WhatsApp +91 8097706536.</p>`
       }).catch(() => undefined);
 
-      return res.status(201).json({ order: newOrder });
+      const merchantTargetPhone = formatWhatsAppNumber(
+        settings.supportPhone || MERCHANT_WHATSAPP_NUMBER
+      );
+      const whatsappOrderUrl = getWhatsAppOrderUrl({
+        orderNumber: newOrder.orderNumber,
+        items: newOrder.items.map((it) => ({
+          name: it.productName,
+          quantity: it.quantity,
+          price: it.price,
+          colorName: it.color?.name
+        })),
+        subtotal: newOrder.subtotal,
+        discount: newOrder.discount,
+        couponCode: newOrder.couponCode,
+        shippingFee: newOrder.shippingFee,
+        codFee: newOrder.codFee,
+        total: newOrder.total,
+        paymentMethod: newOrder.paymentMethod,
+        paymentStatus: newOrder.paymentStatus,
+        upiId: settings.upiId,
+        estimatedDeliveryDate: newOrder.estimatedDeliveryDate,
+        customerName: newOrder.customer.name,
+        phone: newOrder.customer.phone,
+        address: newOrder.shippingAddress,
+        notes: newOrder.notes,
+        targetPhone: merchantTargetPhone
+      });
+
+      const whatsappNotification = await sendMerchantWhatsAppNotification({
+        recipientPhone: merchantTargetPhone,
+        messageText: decodeURIComponent(whatsappOrderUrl.split('?text=')[1] || '')
+      });
+
+      return res.status(201).json({
+        order: newOrder,
+        persistenceMode: usedFallbackStorage ? 'local_fallback' : 'supabase',
+        merchantWhatsApp: merchantTargetPhone,
+        whatsappOrderUrl,
+        whatsappNotification
+      });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Internal checkout error.' });
     }
@@ -764,6 +909,22 @@ export function createApp() {
         .eq('id', orderId);
 
       if (error) {
+        if (isSupabaseNetworkError(error)) {
+          const updatedFallback = updateFallbackOrderById(orderId, (prev) => ({
+            ...prev,
+            upiTransactionRef: cleanUtr,
+            paymentStatus: 'pending',
+            trackingStatus: 'payment_pending',
+            updatedAt: nowIso
+          }));
+          if (updatedFallback) {
+            return res.json({
+              success: true,
+              paymentStatus: 'pending',
+              message: 'UTR recorded! Payment stays pending until verified by our studio.'
+            });
+          }
+        }
         return res.status(400).json({ error: error.message });
       }
 
@@ -800,47 +961,71 @@ export function createApp() {
         return res.status(400).json({ error: 'Order number is required.' });
       }
 
-      const authUser = await getAuthenticatedUser(token);
+      const supabaseOnline = await checkSupabaseReachable();
+      const authUser = supabaseOnline ? await getAuthenticatedUser(token) : null;
       if (!authUser && !contact) {
         return res.status(400).json({
           error: 'Please enter the matching email or 10-digit phone number for this order.'
         });
       }
 
-      const db = getSupabaseServerClient(token);
-      // Try secure RPC first
-      const { data: rpcOrder } = await db.rpc('track_order_secure', {
-        p_order_number: orderNumber,
-        p_contact: contact
-      });
+      if (supabaseOnline) {
+        const db = getSupabaseServerClient(token);
+        const { data: rpcOrder } = await db.rpc('track_order_secure', {
+          p_order_number: orderNumber,
+          p_contact: contact
+        });
 
-      if (rpcOrder) {
-        return res.json({ order: rpcOrder });
-      }
-
-      // Direct service-role / authenticated query check with explicit ownership verification
-      if (SUPABASE_SERVICE_ROLE_KEY || authUser) {
-        const { data: row } = await db
-          .from('orders')
-          .select('*')
-          .ilike('order_number', orderNumber)
-          .maybeSingle();
-
-        if (!row) {
-          return res.status(404).json({ error: 'No matching order found.' });
+        if (rpcOrder) {
+          return res.json({ order: rpcOrder });
         }
 
+        if (SUPABASE_SERVICE_ROLE_KEY || authUser) {
+          const { data: row } = await db
+            .from('orders')
+            .select('*')
+            .ilike('order_number', orderNumber)
+            .maybeSingle();
+
+          if (row) {
+            const cleanContact = contact.toLowerCase();
+            const digits = normalizeIndianPhone(contact);
+            const orderEmail = String(
+              row.customer?.email || row.shipping_address?.email || ''
+            ).toLowerCase();
+            const orderPhone = normalizeIndianPhone(
+              String(row.customer?.phone || row.shipping_address?.phone || '')
+            );
+
+            const authorized =
+              (authUser && (row.user_id === authUser.id || authUser.email?.toLowerCase() === orderEmail)) ||
+              (cleanContact && orderEmail === cleanContact) ||
+              (digits.length === 10 && orderPhone === digits);
+
+            if (!authorized) {
+              return res.status(403).json({
+                error: 'Please enter the matching email or 10-digit phone number for this order.'
+              });
+            }
+
+            return res.json({ order: row });
+          }
+        }
+      }
+
+      const fallbackRow = findFallbackOrderByNumber(orderNumber);
+      if (fallbackRow) {
         const cleanContact = contact.toLowerCase();
         const digits = normalizeIndianPhone(contact);
         const orderEmail = String(
-          row.customer?.email || row.shipping_address?.email || ''
+          fallbackRow.customer?.email || fallbackRow.shippingAddress?.email || ''
         ).toLowerCase();
         const orderPhone = normalizeIndianPhone(
-          String(row.customer?.phone || row.shipping_address?.phone || '')
+          String(fallbackRow.customer?.phone || fallbackRow.shippingAddress?.phone || '')
         );
-
         const authorized =
-          (authUser && (row.user_id === authUser.id || authUser.email?.toLowerCase() === orderEmail)) ||
+          (authUser &&
+            (fallbackRow.userId === authUser.id || authUser.email?.toLowerCase() === orderEmail)) ||
           (cleanContact && orderEmail === cleanContact) ||
           (digits.length === 10 && orderPhone === digits);
 
@@ -850,7 +1035,7 @@ export function createApp() {
           });
         }
 
-        return res.json({ order: row });
+        return res.json({ order: fallbackRow });
       }
 
       return res.status(404).json({
@@ -871,6 +1056,19 @@ export function createApp() {
         return res.status(400).json({ error: 'Please enter a valid email address.' });
       }
 
+      const supabaseOnline = await checkSupabaseReachable();
+      if (!supabaseOnline) {
+        const fallback = saveFallbackNewsletterEmail(email);
+        return res.status(fallback.alreadySubscribed ? 200 : 201).json({
+          subscribed: true,
+          alreadySubscribed: fallback.alreadySubscribed,
+          persistenceMode: 'local_fallback',
+          message: fallback.alreadySubscribed
+            ? 'You are already part of the DreamQueen Crochet Club! Use code DREAM10 at checkout.'
+            : 'Welcome to DreamQueen! Use code DREAM10 for 10% off.'
+        });
+      }
+
       const db = getSupabaseServerClient();
       const { error } = await db.from('newsletter_subscribers').insert({
         id: `sub-${Date.now()}`,
@@ -885,6 +1083,17 @@ export function createApp() {
             subscribed: true,
             alreadySubscribed: true,
             message: 'You are already part of the DreamQueen Crochet Club! Use code DREAM10 at checkout.'
+          });
+        }
+        if (isSupabaseNetworkError(error)) {
+          const fallback = saveFallbackNewsletterEmail(email);
+          return res.status(fallback.alreadySubscribed ? 200 : 201).json({
+            subscribed: true,
+            alreadySubscribed: fallback.alreadySubscribed,
+            persistenceMode: 'local_fallback',
+            message: fallback.alreadySubscribed
+              ? 'You are already part of the DreamQueen Crochet Club! Use code DREAM10 at checkout.'
+              : 'Welcome to DreamQueen! Use code DREAM10 for 10% off.'
           });
         }
         return res.status(400).json({ error: error.message });

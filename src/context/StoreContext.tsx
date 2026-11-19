@@ -214,6 +214,25 @@ function isValidCatalogImage(img?: string): boolean {
   );
 }
 
+function getDeletedStarterProductIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('dreamqueen_deleted_product_ids_v1');
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function mergeMissingStarterProducts(existing: Product[]): Product[] {
+  const deletedIds = getDeletedStarterProductIds();
+  const seenIds = new Set(existing.map((p) => p.id));
+  const missing = INITIAL_PRODUCTS.filter(
+    (p) => !seenIds.has(p.id) && !deletedIds.has(p.id)
+  ).map((p) => ({ ...p, isActive: p.isActive ?? true }));
+  return missing.length > 0 ? [...existing, ...missing] : existing;
+}
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -225,11 +244,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           parsed.length > 0 &&
           parsed.every((p) => p.id && p.images?.some(isValidCatalogImage))
         ) {
-          return parsed.map((p) =>
-            p.id === 'prod-pearl-rose-charm' && p.name.includes('(Set of 3)')
-              ? { ...p, name: 'Pearl Blossom Crochet Rose' }
-              : p
-          );
+          const normalized = parsed.map((p) => {
+            if (p.id === 'prod-pearl-rose-charm' && p.name.includes('(Set of 3)')) {
+              return { ...p, name: 'Pearl Blossom Crochet Rose' };
+            }
+            if (
+              [
+                'prod-pink-bow-bag-charm',
+                'prod-initial-letter-keychain',
+                'prod-lavender-bow-bag-charm',
+                'prod-sky-blue-bow-bag-charm'
+              ].includes(p.id) &&
+              !localStorage.getItem('dreamqueen_new_keychains_price50_v1')
+            ) {
+              return { ...p, price: 50, originalPrice: 99 };
+            }
+            return p;
+          });
+          try {
+            localStorage.setItem('dreamqueen_new_keychains_price50_v1', '1');
+          } catch {}
+          return mergeMissingStarterProducts(normalized);
         }
       }
       return INITIAL_PRODUCTS.map((p) => ({ ...p, isActive: p.isActive ?? true }));
@@ -496,7 +531,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 : p;
             });
           if (sanitized.length > 0) {
-            setProducts(sanitized);
+            setProducts(mergeMissingStarterProducts(sanitized));
           }
         }
       } catch (err) {
@@ -802,6 +837,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProduct = async (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    try {
+      const deleted = getDeletedStarterProductIds();
+      deleted.add(id);
+      localStorage.setItem('dreamqueen_deleted_product_ids_v1', JSON.stringify(Array.from(deleted)));
+    } catch {}
     try {
       await deleteProductFromSupabase(id);
       showToast('Product removed from catalog', 'info');
